@@ -305,103 +305,35 @@ function thumbTick(once) {
 
 $('add-phone-btn').onclick = addPhone;
 function addPhone() {
-  let mode = 'qr', qrId = null;
   openModal({
     title: 'Add a phone',
-    sub: 'On the phone: <b>Settings &gt; Developer options &gt; Wireless debugging</b>, turn it on.',
-    body: `<div class="seg" id="m-modes">
-        <button type="button" data-m="app" class="on">FastAutomate app</button>
-        <button type="button" data-m="qr">Scan QR</button>
-        <button type="button" data-m="code">Pairing code</button>
-        <button type="button" data-m="addr">Added before</button>
+    sub: 'Works on any internet: no cable, no Wi-Fi setup, no developer options.',
+    body: `<div class="qr-row">
+        <div class="qr" id="m-appqr">Loading...</div>
+        <ol class="steps-list">
+          <li>Scan this with the phone's <b>camera</b>.</li>
+          <li>Install <b>FastAutomate v2</b>, then tap <b>Connect</b>.</li>
+          <li>Turn on the app's service. The phone appears here.</li>
+        </ol>
       </div>
-      <div data-mode="app">
-        <div class="qr-row">
-          <div class="qr" id="m-appqr">Loading...</div>
-          <ol class="steps-list">
-            <li>Scan this with the phone's <b>camera</b>.</li>
-            <li>Install <b>FastAutomate</b>, then tap <b>Connect</b>.</li>
-            <li>Turn on the app's service. The phone appears here.</li>
-          </ol>
-        </div>
-        <p class="field-note">No cable, no Wi-Fi setup: works on any internet. Already have the app? Tap <b>Connect with password</b> in it.
-          Link: <a id="m-applink" target="_blank" rel="noopener"></a></p>
-      </div>
-      <div data-mode="qr" hidden>
-        <div class="qr-row">
-          <div class="qr" id="m-qr">Loading...</div>
-          <ol class="steps-list">
-            <li>Open <b>Wireless debugging</b> on the phone.</li>
-            <li>Tap <b>Pair device with QR code</b>.</li>
-            <li>Scan this. The phone is added by itself.</li>
-          </ol>
-        </div>
-        <div class="now qr-status" id="m-qrstatus"><span class="spin"></span><span class="txt">Waiting for the phone to scan the code</span></div>
-      </div>
-      <div data-mode="code" hidden>
-        <p class="field-note">Tap <b>Pair device with pairing code</b> and type what the popup shows.</p>
-        <div class="field-row">
-          <div><label for="m-paddr">IP address &amp; port</label><input type="text" id="m-paddr" placeholder="like 100.119.x.x:43095" autocomplete="off"></div>
-          <div><label for="m-pcode">Pairing code</label><input type="text" id="m-pcode" placeholder="6 digits" inputmode="numeric" maxlength="7" autocomplete="off"></div>
-        </div>
-      </div>
-      <div data-mode="addr" hidden>
-        <p class="field-note">Phone paired before: type the IP address &amp; port from the Wireless debugging screen.</p>
-        <label for="m-addr">IP address &amp; port</label><input type="text" id="m-addr" placeholder="like 100.119.x.x:41235" autocomplete="off">
-      </div>
-      <div data-mode="code addr" id="m-namewrap" hidden><label for="m-pname">Name (optional)</label><input type="text" id="m-pname" placeholder="for example: Sales phone 1" maxlength="60" autocomplete="off"></div>`,
-    go: 'Add phone',
-    submit: async () => {
-      const name = $('m-pname').value;
-      let phone;
-      if (mode === 'code') {
-        const body = {name, address: '', pair_address: $('m-paddr').value.trim(), pair_code: $('m-pcode').value.trim()};
-        if (!body.pair_address || !body.pair_code) throw new Error('Type both things the popup shows: the IP address & port and the code.');
-        $('m-go').textContent = 'Pairing and finding the phone... up to a minute';
-        phone = await api('api/phones', {method: 'POST', body});
-      } else {
-        const address = $('m-addr').value.trim();
-        if (!address) throw new Error('Type the IP address & port from the Wireless debugging screen.');
-        phone = await api('api/phones', {method: 'POST', body: {name, address}});
-      }
-      toast(phone.name + ' added. Setting it up in the background (a few minutes the first time).');
-    },
+      <p class="field-note">Already have FastAutomate v2? Tap <b>Connect with password</b> in it.
+        Link: <a id="m-applink" target="_blank" rel="noopener"></a></p>`,
+    go: 'Close',
+    submit: async () => {},
   });
-  const setMode = (m) => {
-    mode = m;
-    document.querySelectorAll('#m-modes button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
-    document.querySelectorAll('[data-mode]').forEach((d) => { d.hidden = !d.dataset.mode.split(' ').includes(m); });
-    $('m-go').hidden = m === 'qr' || m === 'app'; // scanning is the action, no button needed
-    $('m-err').textContent = '';
-  };
-  document.querySelectorAll('#m-modes button').forEach((b) => b.onclick = () => setMode(b.dataset.m));
-  setMode('app');
   const knownIds = new Set(S.phones.map((p) => p.id));
   api('api/app/invite', {method: 'POST'}).then(async (r) => {
     $('m-applink').textContent = r.url.replace(/^https?:\/\//, ''); $('m-applink').href = r.url;
     $('m-appqr').innerHTML = (await api('api/qr?text=' + encodeURIComponent(r.url))).svg;
   }).catch((e) => { $('m-appqr').textContent = 'Unavailable: ' + e.message; });
-  // the window closes by itself when a phone connects through the app
+  // the window closes by itself when the phone connects
   const watchNew = () => {
     if (!$('modal-wrap').classList.contains('on')) return;
-    const fresh = S.phones.find((p) => !knownIds.has(p.id) && p.link === 'app');
-    if (fresh) { closeModal(); toast(fresh.name + ' connected through the app'); return; }
+    const fresh = S.phones.find((p) => !knownIds.has(p.id));
+    if (fresh) { closeModal(); toast(fresh.name + ' connected'); return; }
     setTimeout(watchNew, 1000);
   };
   watchNew();
-  api('api/pair/qr', {method: 'POST'}).then((r) => { qrId = r.qr_id; $('m-qr').innerHTML = r.svg; pollQr(); })
-    .catch((e) => { $('m-qr').textContent = 'QR unavailable: ' + e.message; });
-  const pollQr = async () => {
-    if (!qrId || !$('modal-wrap').classList.contains('on')) { if (qrId) api(`api/pair/qr/${qrId}`, {method: 'DELETE'}).catch(() => {}); return; }
-    try {
-      const st = await api(`api/pair/qr/${qrId}`);
-      const box = $('m-qrstatus'); box.querySelector('.txt').textContent = st.message;
-      box.classList.toggle('bad', st.state === 'failed'); box.querySelector('.spin').hidden = st.state === 'failed';
-      if (st.state === 'done') { closeModal(); toast(st.message + '. Setting it up in the background.'); return; }
-      if (st.state === 'failed') return;
-    } catch (e) { $('m-qrstatus').querySelector('.txt').textContent = e.message; return; }
-    setTimeout(pollQr, 1500);
-  };
 }
 
 /* ================= live viewer ================= */
@@ -446,10 +378,6 @@ $('v-rename').onclick = () => {
   const p = viewer && phoneById(viewer.id); if (!p) return;
   openModal({title: 'Rename phone', body: `<label for="m-rn">Name</label><input type="text" id="m-rn" maxlength="60" value="${esc(p.name)}">`, go: 'Save', focus: 'm-rn',
     submit: async () => { await api(`api/phones/${p.id}`, {method: 'PATCH', body: {name: $('m-rn').value}}); }});
-};
-$('v-prepare').onclick = async () => {
-  const p = viewer && phoneById(viewer.id); if (!p) return;
-  try { await api(`api/phones/${p.id}/prepare`, {method: 'POST'}); toast('Repairing the Mobilerun Portal on ' + p.name); } catch (e) { fail(e); }
 };
 $('v-remove').onclick = () => {
   const p = viewer && phoneById(viewer.id); if (!p) return;

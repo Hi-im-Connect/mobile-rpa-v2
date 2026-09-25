@@ -13,3 +13,13 @@ def test_every_button_id_is_used_by_the_script():
     assert ids, "no buttons found"
     unused = [i for i in ids if f"'{i}'" not in js and f'"{i}"' not in js]
     assert not unused, f"buttons with no handler: {unused}"
+
+
+def test_v2_adds_phones_through_the_app_only():
+    js = (STATIC / "app.js").read_text()
+    html = (STATIC / "index.html").read_text()
+    for gone in ("api/pair/qr", "api('api/phones', {method: 'POST'", "/prepare", 'data-m="qr"', 'data-m="code"', 'data-m="addr"'):
+        assert gone not in js, gone
+    assert "v-prepare" not in html and "v-prepare" not in js
+    assert "FastAutomate v2" in js
+    assert ">v2<" in html

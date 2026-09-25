@@ -9,7 +9,7 @@ if (!/\/$|\.html$/.test(location.pathname))
   location.replace(location.pathname + '/' + location.search + location.hash);
 try { var t = localStorage.getItem('mrpa-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 </script>
-<title>Mobile RPA</title>
+<title>Mobile RPA v2</title>
 <meta name="description" content="Connect Android phones, watch them live and let AI agents run tasks on them.">
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="stylesheet" href="app.css">
@@ -17,7 +17,7 @@ try { var t = localStorage.getItem('mrpa-theme'); if (t) document.documentElemen
 <body class="locked">
 
 <header>
-  <div class="logo"><img src="logo.png" alt="FastAutomate">Mobile RPA</div>
+  <div class="logo"><img src="logo.png" alt="FastAutomate">Mobile RPA<span class="tag online" style="margin-left:8px">v2</span></div>
   <div class="engine" id="engine"><span class="led"></span><span id="engine-label">ENGINE LIVE</span></div>
   <div class="bar-kpis">
     <div class="bk"><div class="l">Phones online</div><div class="v"><span id="k-online">0</span> <small id="k-total">/ 0</small></div></div>
@@ -172,7 +172,6 @@ try { var t = localStorage.getItem('mrpa-theme'); if (t) document.documentElemen
         </form>
         <div class="v-actions">
           <button class="link" id="v-rename">Rename</button>
-          <button class="link" id="v-prepare" title="Install or repair the Mobilerun Portal app">Repair setup</button>
           <button class="link warn" id="v-remove">Remove phone</button>
         </div>
       </div>
