@@ -70,8 +70,8 @@ Dashboard v2 (planner)                        App v2 (executor)
 
 ### Events (app -> dashboard)
 
-`agent/event {uuid, seq, kind, text, ts}`, where kind is one of `phase`, `plan`, `step`, `action`,
-`ok`, `fail`, `answer` (the kinds v1's step log already shows).
+`agent/event {uuid, seq, kind, text, ts}`, where kind is one of `phase`, `plan`, `think`, `action`,
+`ok`, `error`, `answer` (the kinds v1's step log already shows).
 
 `agent/finished {uuid, status: succeeded|failed|stopped, result, steps, shot}`: `shot` is one
 480 px JPEG (base64) of the final screen.
@@ -138,7 +138,7 @@ Small units, each testable with fakes:
 | OpenRouter says the key's cap is reached (402/403) | Run ends `failed` with "This phone's daily AI budget is used up"; the card shows it. |
 | No key yet / management key missing | Assigning is blocked with a message that says which setting to fill in. |
 | Accessibility off on the phone | `agent/run` refused: "Turn on FastAutomate v2 in Accessibility". |
-| An action fails on the phone | Reported as a `fail` step; the loop continues. After 3 in a row the planner rewrites the goals, or, with Reasoning off, the run ends failed. |
+| An action fails on the phone | Reported as an `error` step; the loop continues. After 3 in a row the planner rewrites the goals, or, with Reasoning off, the run ends failed. |
 | Dashboard unreachable mid-run | The run continues; events wait in the outbox. |
 
 ## 7. Testing
