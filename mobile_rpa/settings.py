@@ -19,6 +19,8 @@ FORMATS = ("openai", "anthropic")
 RUNTIME_DEFAULTS: dict[str, str] = {
     "provider": "openai",  # wire format: "openai" or "anthropic" (Claude)
     "api_key": "",
+    "management_key": "",  # creates one capped key per phone
+    "daily_cap_usd": "2.00",  # per phone, resets daily
     "base_url": DEFAULT_BASE_URL,
     "planner_model": DEFAULT_MODEL,
     "executor_model": DEFAULT_MODEL,
@@ -27,7 +29,7 @@ RUNTIME_DEFAULTS: dict[str, str] = {
     "vision": "1",  # agent sees full-res Portal screenshots too (257 KB / 2.3 s on a relayed link)
     "timeout_minutes": "15",
 }
-SECRET_SETTINGS = {"api_key"}
+SECRET_SETTINGS = {"api_key", "management_key"}
 
 
 @dataclass(frozen=True)
