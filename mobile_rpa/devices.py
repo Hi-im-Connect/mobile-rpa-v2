@@ -64,6 +64,11 @@ class DeviceConn:
             raise DeviceError(str(reply.get("error") or "the phone reported an error"))
         return reply.get("result")
 
+    async def notify(self, method: str, params: dict | None = None) -> None:
+        """A message the phone does not answer, such as agent/ack."""
+        async with self._send_lock:
+            await self.ws.send_text(json.dumps({"method": method, "params": params or {}}))
+
     def feed(self, message: dict) -> None:
         future = self._pending.get(message.get("id"))  # type: ignore[arg-type]
         if future and not future.done():
