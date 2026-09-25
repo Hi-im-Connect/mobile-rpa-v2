@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+/* Behind the /mobile prefix a missing trailing slash makes relative URLs escape the prefix. */
+if (!/\/$|\.html$/.test(location.pathname))
+  location.replace(location.pathname + '/' + location.search + location.hash);
+try { var t = localStorage.getItem('mrpa-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<title>Mobile RPA</title>
+<meta name="description" content="Connect Android phones, watch them live and let AI agents run tasks on them.">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="locked">
+
+<header>
+  <div class="logo"><img src="logo.png" alt="FastAutomate">Mobile RPA</div>
+  <div class="engine" id="engine"><span class="led"></span><span id="engine-label">ENGINE LIVE</span></div>
+  <div class="bar-kpis">
+    <div class="bk"><div class="l">Phones online</div><div class="v"><span id="k-online">0</span> <small id="k-total">/ 0</small></div></div>
+    <div class="bk"><div class="l">Running now</div><div class="v" id="k-running">0</div></div>
+    <div class="bk"><div class="l">Done today</div><div class="v" id="k-done">0</div></div>
+    <div class="bk bad"><div class="l">Failed today</div><div class="v" id="k-failed">0</div></div>
+    <div class="bk" id="bk-credit" hidden title="OpenRouter balance. Click to check again."><div class="l">AI credit</div><div class="v" id="k-credit"></div></div>
+  </div>
+  <nav class="tabs">
+    <a href="#phones" data-page="phones">Phones</a>
+    <a href="#tasks" data-page="tasks">Tasks</a>
+    <a href="#history" data-page="history">History</a>
+  </nav>
+  <button class="icon-btn" id="settings-btn" title="Settings" aria-label="Settings">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+  </button>
+  <button class="icon-btn" id="theme-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9 19 19M19 5l-2.1 2.1M7.1 16.9 5 19"/></svg>
+  </button>
+  <button class="new" id="new-task-btn">New task</button>
+</header>
+
+<main>
+  <!-- ================= phones ================= -->
+  <section class="page" id="page-phones">
+    <div class="pg-head">
+      <div>
+        <h1>Phones</h1>
+        <p>Every phone the server can reach over adb. Click one to watch it live and take control.</p>
+      </div>
+      <button class="ghost" id="add-phone-btn">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add phone
+      </button>
+    </div>
+    <div class="phone-grid" id="phone-grid"></div>
+    <div class="empty" id="phones-empty" hidden>
+      <svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>
+      <b>No phones yet</b>
+      <span>Press <b>Add phone</b> and type the phone's address. It shows up here and you can watch it live.</span>
+    </div>
+  </section>
+
+  <!-- ================= tasks ================= -->
+  <section class="page" id="page-tasks">
+    <div class="composer">
+      <h1>New task</h1>
+      <p>Say what to do in plain words. Pick phones. Each phone gets its own version of the task.</p>
+  
+      <div class="step">
+        <div class="head"><span class="n">1</span><b>What should the phones do?</b></div>
+        <textarea id="prompt" rows="5" maxlength="4000"
+          placeholder="Example: each phone installs a different food delivery app from the Play Store and opens it"></textarea>
+        <div class="examples" id="examples"></div>
+      </div>
+
+      <div class="step">
+        <div class="head"><span class="n">2</span><b>Which phones?</b>
+          <button class="link" id="pick-all">Select all online</button></div>
+        <div class="chips" id="phone-chips"></div>
+      </div>
+
+      <div class="step">
+        <div class="head"><span class="n">3</span><b>How</b></div>
+        <div class="opts">
+          <label class="switch"><input type="checkbox" id="opt-reasoning" checked>
+            <span class="sw"></span><span><b>Plan, then act</b><small>A planner model writes the steps, an executor model does them. Best for longer tasks.</small></span></label>
+          <div class="steps-field"><label for="opt-steps">Max steps</label>
+            <input type="number" id="opt-steps" min="3" max="200" value="30"></div>
+        </div>
+      </div>
+
+      <div class="split-box" id="split-box" hidden>
+        <div class="z-h"><b>What each phone will do</b><span class="cnt" id="split-cnt"></span>
+          <button class="link" id="split-redo">Split again</button></div>
+        <div id="split-list"></div>
+      </div>
+
+      <div class="send">
+        <p class="hint" id="send-hint">Pick at least one phone.</p>
+        <button class="secondary" id="split-btn" disabled>Preview split</button>
+        <button class="primary" id="run-btn" disabled>Run</button>
+      </div>
+    </div>
+
+    <div class="board">
+      <div class="z-h"><b>Running now</b><span class="cnt" id="board-cnt"></span>
+        <span class="live"><i></i>LIVE</span></div>
+      <div id="board"></div>
+      <div class="empty" id="board-empty">
+        <svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18.5h2"/></svg>
+        <b>Nothing running</b>
+        <span>Write a task on the left and press Run. You will watch every phone work here. Finished tasks move to History.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= history ================= -->
+  <section class="page" id="page-history">
+    <div class="pg-head">
+      <div><h1>History</h1><p>Every task and what each phone did.</p></div>
+    </div>
+    <div class="panel hist">
+      <table>
+        <thead><tr><th>When</th><th>Task</th><th>Phones</th><th>Result</th><th>Steps</th><th>Took</th></tr></thead>
+        <tbody id="hist-body"></tbody>
+      </table>
+      <div class="empty" id="hist-empty"><b>No tasks yet</b><span>Tasks you run show up here.</span></div>
+      <button class="more" id="hist-more" hidden>Load more</button>
+    </div>
+  </section>
+</main>
+
+<nav class="bnav" aria-label="Sections">
+  <a href="#phones" data-page="phones">Phones</a>
+  <a href="#tasks" data-page="tasks">Tasks</a>
+  <a href="#history" data-page="history">History</a>
+</nav>
+
+<!-- ================= live phone view ================= -->
+<div class="viewer-wrap" id="viewer" hidden>
+  <div class="viewer">
+    <div class="v-head">
+      <span class="led" id="v-led"></span>
+      <div class="v-title"><b id="v-name"></b><span id="v-sub"></span></div>
+      <span class="tag" id="v-tag"></span>
+      <button class="x" id="v-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="v-body">
+      <div class="v-stage">
+        <div class="device"><div class="screen big" id="v-screen"></div></div>
+        <div class="v-dock">
+          <div class="v-keys">
+            <button data-key="back" title="Back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+            <button data-key="home" title="Home" aria-label="Home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg></button>
+            <button data-key="recents" title="Recent apps" aria-label="Recent apps"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="v-side">
+        <section class="v-card">
+          <div class="z-h"><b>Now</b><span class="cnt" id="v-steps"></span></div>
+          <div class="v-now" id="v-now"></div>
+          <button class="danger" id="v-stop" hidden>Stop task</button>
+        </section>
+        <section class="v-card grow" id="v-logcard">
+          <div class="z-h"><b>Step log</b></div>
+          <div class="log" id="v-log"></div>
+        </section>
+        <form class="v-type" id="v-type">
+          <input type="text" id="v-text" placeholder="Type on the phone..." autocomplete="off">
+          <button type="submit" class="primary sm">Send</button>
+        </form>
+        <div class="v-actions">
+          <button class="link" id="v-rename">Rename</button>
+          <button class="link" id="v-prepare" title="Install or repair the Mobilerun Portal app">Repair setup</button>
+          <button class="link warn" id="v-remove">Remove phone</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= slide-over: task detail / settings ================= -->
+<div class="overlay" id="overlay"></div>
+<aside class="so" id="so" aria-hidden="true">
+  <div class="so-head"><div class="row1"><h2 id="so-title"></h2><button class="x" id="so-close" aria-label="Close">&times;</button></div>
+    <div class="sub" id="so-sub"></div></div>
+  <div class="so-body" id="so-body"></div>
+  <div class="so-foot" id="so-foot"></div>
+</aside>
+
+<!-- ================= modal ================= -->
+<div class="modal-wrap" id="modal-wrap">
+  <form class="modal" id="modal">
+    <h3 id="m-title"></h3>
+    <p class="sub" id="m-sub"></p>
+    <div id="m-body"></div>
+    <p class="err" id="m-err"></p>
+    <div class="btns"><button type="button" class="cancel" id="m-cancel">Cancel</button><button type="submit" class="go" id="m-go"></button></div>
+  </form>
+</div>
+
+<!-- ================= login ================= -->
+<div id="login-view">
+  <form class="login-card" id="login-form">
+    <h2><img src="logo.png" alt="">Mobile RPA</h2>
+    <p>Enter the team password to continue.</p>
+    <label for="login-pass">Password</label>
+    <input type="password" id="login-pass" autocomplete="current-password">
+    <button type="submit">Sign in</button>
+    <p class="err" id="login-err"></p>
+  </form>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>

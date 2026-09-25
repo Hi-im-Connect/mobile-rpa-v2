@@ -1,0 +1,7 @@
+.venv/
+data/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.superpowers/
+mobile_rpa/fa-portal-v2.apk
