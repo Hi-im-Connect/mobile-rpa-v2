@@ -33,3 +33,8 @@ def test_v2_screens():
         assert field in js
     assert "s-format" not in js and "FORMAT_PRESETS" not in js  # OpenRouter only
     assert "10000" in js  # card thumbnails every 10 s
+
+
+def test_v2_settings_have_a_provider_url():
+    js = (STATIC / "app.js").read_text()
+    assert "s-url" in js and "base_url" in js

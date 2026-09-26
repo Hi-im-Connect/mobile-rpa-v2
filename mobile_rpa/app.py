@@ -22,7 +22,7 @@ from .db import Db
 from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub, app_serial, device_id_of
 from .events import Broker
 from .orchestrator import Orchestrator
-from .phone_keys import PhoneKeys
+from .phone_keys import PhoneKeys, key_mode
 from .phones import PhoneRegistry
 from .settings import RUNTIME_DEFAULTS, SECRET_SETTINGS, Env, load_env
 from .splitter import SplitError, credit_left, split, test_connection
@@ -69,7 +69,7 @@ def masked_settings(values: dict[str, str]) -> dict[str, str | bool]:
         key = values.get(name, "")
         out[f"{name}_set"] = bool(key)
         out[f"{name}_hint"] = f"...{key[-4:]}" if len(key) >= 8 else ""
-    out["ready"] = bool(values.get("api_key")) and bool(values.get("management_key"))
+    out["ready"] = bool(values.get("api_key"))
     return out
 
 
@@ -329,6 +329,8 @@ def create_app(env: Env | None = None) -> FastAPI:
             text = str(value).strip()
             if key in SECRET_SETTINGS and not text:
                 continue  # blank means "keep the current key"
+            if key == "base_url" and not text.startswith(("http://", "https://")):
+                raise HTTPException(400, "Base URL must start with http:// or https://")
             if key in ("max_steps", "timeout_minutes") and not text.isdigit():
                 raise HTTPException(400, f"{key} must be a whole number")
             if key == "daily_cap_usd":
@@ -344,10 +346,10 @@ def create_app(env: Env | None = None) -> FastAPI:
         db.set_settings(clean)
         if clean.keys() & {"api_key", "management_key"}:
             spawn(refresh_credit())
-        if clean.get("management_key") and clean["management_key"] != before.get("management_key"):
-            for phone in db.phones():  # connected phones get their keys now
+        if key_mode(db.settings()) != key_mode(before):  # new provider or key: connected phones get it now
+            for phone in db.phones():
                 device_id = device_id_of(phone["serial"]) or ""
-                if not phone["key_hash"] and devices.connected(device_id):
+                if devices.connected(device_id):
                     spawn(give_key(device_id, devices.get(device_id), ""))
         if "daily_cap_usd" in clean and clean["daily_cap_usd"] != before.get("daily_cap_usd"):
             spawn(phone_keys.apply_cap(float(clean["daily_cap_usd"])))

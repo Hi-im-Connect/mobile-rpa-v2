@@ -8,7 +8,7 @@ import re
 
 import httpx
 
-from .settings import OPENROUTER, llm
+from .settings import OPENROUTER, is_openrouter, llm
 
 SYSTEM = """You assign work to Android phones that are each driven by an AI agent.
 The operator wrote ONE task for N phones. Write exactly N instructions, one per phone, in order.
@@ -85,8 +85,8 @@ async def test_connection(settings: dict[str, str]) -> str:
 async def credit_left(settings: dict[str, str]) -> float | None:
     """Remaining OpenRouter account balance in USD (either key can read it), or None on any error."""
     key = settings.get("api_key") or settings.get("management_key")
-    if not key:
-        return None
+    if not key or not is_openrouter(settings):
+        return None  # other providers (e.g. Gemini) have no balance to read here
     for attempt in range(3):  # a blip (DNS, TLS) must not hide the balance
         try:
             async with httpx.AsyncClient(timeout=15) as client:

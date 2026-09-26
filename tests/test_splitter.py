@@ -28,3 +28,13 @@ async def test_single_phone_needs_no_model_call():
 async def test_multi_phone_needs_a_key():
     with pytest.raises(SplitError, match="API key"):
         await split("x", ["a", "b"], {"api_key": ""})
+
+
+async def test_credit_is_only_known_for_openrouter(monkeypatch):
+    from mobile_rpa import splitter
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("credit_left must not call out for other providers")
+
+    monkeypatch.setattr(splitter.httpx, "AsyncClient", no_network)
+    assert await splitter.credit_left({"base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "api_key": "g"}) is None

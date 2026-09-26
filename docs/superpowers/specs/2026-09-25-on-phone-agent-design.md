@@ -170,3 +170,15 @@ Small units, each testable with fakes:
 - adb or NetBird phones, QR pairing, scrcpy video.
 - Claude-format or other providers (only OpenRouter can issue capped per-phone keys).
 - Running without the internet (each step needs an OpenRouter call).
+
+## Addendum (2026-09-26, user request): other providers with one shared key
+
+For testing, the user asked to run the agent on a company Gemini key (`gemini-3.1-flash-lite-preview`
+through Gemini's OpenAI-compatible endpoint, `https://generativelanguage.googleapis.com/v1beta/openai`,
+verified to return tool calls with `tool_choice: "required"`). So Settings has a provider URL:
+
+- **OpenRouter** (default): unchanged, one capped key per phone from the management key.
+- **Any other OpenAI-compatible provider**: every phone gets the dashboard's own API key through
+  `agent/credentials` (hash `shared-...`). No per-phone cap, pause only stops new tasks, no spend
+  figure, no account-credit check.
+- Changing the provider or its key sends the new credentials to every connected phone.

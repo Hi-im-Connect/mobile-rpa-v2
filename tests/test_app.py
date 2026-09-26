@@ -247,3 +247,17 @@ def test_split_single_phone_is_verbatim(client, monkeypatch):
         r = client.post("/api/split", json={"prompt": "Open Settings", "phone_ids": [p["id"]]}).json()
         assert r["instructions"][0]["instruction"] == "Open Settings"
         phone.stop.set()
+
+
+def test_switching_to_another_provider_gives_phones_the_shared_key(client, monkeypatch):
+    login(client)
+    ready(client, monkeypatch)
+    with join(client) as ws:
+        phone = AgentPhone(ws)
+        keyed_phone(client)
+        gemini = "https://generativelanguage.googleapis.com/v1beta/openai"
+        client.put("/api/settings", json={"base_url": gemini, "api_key": "gemini-key", "planner_model": "gemini-3.1-flash-lite-preview"})
+        creds = wait_for(lambda: [m for m in phone.sent("agent/credentials") if m["params"]["base_url"] == gemini])[0]["params"]
+        assert creds["key"] == "gemini-key" and creds["hash"].startswith("shared-")
+        assert client.put("/api/settings", json={"base_url": "ftp://x"}).status_code == 400
+        phone.stop.set()

@@ -13,6 +13,7 @@ OPENROUTER = "https://openrouter.ai/api/v1"
 
 # Runtime settings: key -> default. Stored in the DB table `settings`, editable in the UI.
 RUNTIME_DEFAULTS: dict[str, str] = {
+    "base_url": OPENROUTER,  # any OpenAI-compatible provider; OpenRouter gives per-phone capped keys
     "api_key": "",  # the dashboard's own key: splitting a task across phones, account credit
     "management_key": "",  # creates one capped key per phone (openrouter.ai/settings/management-keys)
     "daily_cap_usd": "2.00",  # per phone, resets daily
@@ -61,5 +62,10 @@ def load_env() -> Env:
 
 
 def llm(settings: dict[str, str]) -> dict[str, str]:
-    """The dashboard's own connection (OpenRouter, OpenAI format)."""
-    return {"provider": "openai", "key": settings.get("api_key", ""), "base_url": OPENROUTER}
+    """The AI connection (OpenAI format): OpenRouter by default, or e.g. Gemini's OpenAI endpoint."""
+    base = (settings.get("base_url") or OPENROUTER).strip().rstrip("/")
+    return {"provider": "openai", "key": settings.get("api_key", ""), "base_url": base}
+
+
+def is_openrouter(settings: dict[str, str]) -> bool:
+    return "openrouter.ai" in llm(settings)["base_url"]

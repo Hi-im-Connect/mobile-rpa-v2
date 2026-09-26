@@ -104,3 +104,31 @@ async def test_forget_pause_cap_and_spend(tmp_path):
 async def test_phone_that_drops_before_receiving_its_key_reports_it(tmp_path):
     db, phone, log, keys = setup(tmp_path)
     assert "Could not give the phone its AI key" in await keys.ensure(phone["id"], FakeConn(fail=True), "")
+
+
+GEMINI = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+
+async def test_other_providers_share_one_key(tmp_path):
+    db, phone, log, keys = setup(tmp_path, management_key="")
+    db.set_settings({"base_url": GEMINI, "api_key": "gemini-key"})
+    conn = FakeConn()
+    assert await keys.ensure(phone["id"], conn, "") is None
+    method, creds = conn.calls[0]
+    assert method == "agent/credentials" and creds["key"] == "gemini-key" and creds["base_url"] == GEMINI
+    assert creds["hash"].startswith("shared-") and db.phone(phone["id"])["key_hash"] == creds["hash"]
+    assert log == []  # no OpenRouter key management involved
+    again = FakeConn()
+    assert await keys.ensure(phone["id"], again, creds["hash"]) is None
+    assert again.calls == []  # the phone already holds it
+
+
+async def test_shared_keys_are_not_deleted_capped_or_disabled(tmp_path):
+    db, phone, log, keys = setup(tmp_path, management_key="")
+    db.update_phone(phone["id"], key_hash="shared-abc")
+    phone = db.phone(phone["id"])
+    await keys.pause(phone, True)
+    await keys.apply_cap(5.0)
+    await keys.forget(phone)
+    assert log == [] and db.phone(phone["id"])["paused"] == 1
+    assert await keys.spent_today(phone) is None

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from .settings import OPENROUTER, RUNTIME_DEFAULTS
+from .settings import OPENROUTER, RUNTIME_DEFAULTS, llm
 
 PROMPTS_VERSION = "2026-09-25.1"
 
@@ -72,7 +72,7 @@ def _common(reasoning: bool, max_steps: int, settings: dict[str, str]) -> dict:
         "vision": settings.get("vision", "1") != "0",
         "planner_model": settings.get("planner_model") or RUNTIME_DEFAULTS["planner_model"],
         "executor_model": settings.get("executor_model") or RUNTIME_DEFAULTS["executor_model"],
-        "base_url": OPENROUTER,
+        "base_url": llm(settings)["base_url"],
         "prompts": {"version": PROMPTS_VERSION, "planner": PLANNER_SYSTEM, "executor": EXECUTOR_SYSTEM, "tools": TOOLS},
     }
 

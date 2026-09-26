@@ -634,7 +634,10 @@ function openSettings() {
   const s = S.settings;
   $('so-title').textContent = 'Settings'; $('so-sub').textContent = 'OpenRouter keys, models and the limits for every task.';
   $('so-body').innerHTML = `
-    <label for="s-key">OpenRouter API key <small>(the dashboard's own: splitting tasks, credit)</small></label>
+    <label for="s-url">Provider URL <small>(OpenAI format)</small></label><input type="text" id="s-url" value="${esc(s.base_url)}">
+    <p class="field-note">OpenRouter (https://openrouter.ai/api/v1): each phone gets its own capped key from the management key.
+      Any other provider, for example Gemini (https://generativelanguage.googleapis.com/v1beta/openai): the phones share the API key below.</p>
+    <label for="s-key">API key <small>(the dashboard's own; shared with phones on non-OpenRouter providers)</small></label>
     <input type="password" id="s-key" autocomplete="off" placeholder="${s.api_key_set ? 'Saved (' + esc(s.api_key_hint) + '). Type to replace.' : 'sk-or-v1-...'}">
     <label for="s-mkey">OpenRouter management key <small>(gives each phone its own capped key)</small></label>
     <input type="password" id="s-mkey" autocomplete="off" placeholder="${s.management_key_set ? 'Saved (' + esc(s.management_key_hint) + '). Type to replace.' : 'From openrouter.ai/settings/management-keys'}">
@@ -669,7 +672,7 @@ function openSettings() {
 }
 async function saveSettings() {
   const body = {
-    planner_model: $('s-planner').value, executor_model: $('s-exec').value, daily_cap_usd: $('s-cap').value,
+    base_url: $('s-url').value, planner_model: $('s-planner').value, executor_model: $('s-exec').value, daily_cap_usd: $('s-cap').value,
     max_steps: $('s-steps').value, timeout_minutes: $('s-timeout').value, vision: $('s-vision').checked ? '1' : '0',
   };
   if ($('s-key').value.trim()) body.api_key = $('s-key').value.trim();

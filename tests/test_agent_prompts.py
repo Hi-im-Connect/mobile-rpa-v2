@@ -30,3 +30,8 @@ def test_defaults_for_the_app_have_no_task():
     defaults = json.loads(defaults_json())
     assert "uuid" not in defaults and "instruction" not in defaults
     assert defaults["max_steps"] == 30 and defaults["vision"] is True and defaults["prompts"]["tools"] == TOOLS
+
+
+def test_payload_uses_the_configured_provider():
+    gemini = "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert run_payload(TASK, RUN, {**SETTINGS, "base_url": gemini + "/"})["base_url"] == gemini
