@@ -23,6 +23,7 @@ log = logging.getLogger("mobile_rpa.orchestrator")
 ACTIVE = ("queued", "running")
 FINAL = ("succeeded", "failed", "stopped")
 SILENCE_GRACE_S = 300  # after the time limit, how long a silent phone gets before its run is failed
+SILENT = "The phone stopped reporting (no result within the time limit)."
 
 
 class Orchestrator:
@@ -109,7 +110,7 @@ class Orchestrator:
         self._watch(run["id"], self._deadline_s(self.db.settings()))
 
     def _phone_event(self, run: dict, params: dict) -> None:
-        if run["status"] not in ACTIVE:
+        if not _open_for_reports(run):
             return  # the run already ended here (stopped while offline): late reports are ignored
         event = self.db.add_event(run["id"], str(params.get("kind") or "status")[:20],
                                   str(params.get("text") or "")[:4000], seq=params.get("seq"), ts=params.get("ts"))
@@ -120,7 +121,7 @@ class Orchestrator:
         self.broker.publish("run_event", {**event, "task_id": run["task_id"], "steps": params.get("steps")})
 
     def _phone_finished(self, run: dict, params: dict) -> None:
-        if run["status"] not in ACTIVE:
+        if not _open_for_reports(run):
             return
         status = params.get("status") if params.get("status") in FINAL else "failed"
         if params.get("shot"):
@@ -152,7 +153,7 @@ class Orchestrator:
             self._watchdogs.pop(run_id, None)
             run = self.db.run(run_id)
             if run and run["status"] in ACTIVE:
-                self._finish(run, "failed", "The phone stopped reporting (no result within the time limit).")
+                self._finish(run, "failed", SILENT)
 
         old = self._watchdogs.pop(run_id, None)
         if old:
@@ -183,3 +184,8 @@ class Orchestrator:
         job = asyncio.get_running_loop().create_task(coro)
         self._jobs.add(job)
         job.add_done_callback(self._jobs.discard)
+
+
+def _open_for_reports(run: dict) -> bool:
+    """Still running, or only given up on because the phone went quiet: its true outcome still counts."""
+    return run["status"] in ACTIVE or (run["status"] == "failed" and run["result"] == SILENT)

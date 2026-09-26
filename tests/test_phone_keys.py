@@ -134,3 +134,29 @@ async def test_shared_keys_are_not_deleted_capped_or_disabled(tmp_path):
     await keys.forget(phone)
     assert log == [] and db.phone(phone["id"])["paused"] == 1
     assert await keys.spent_today(phone) is None
+
+
+async def test_a_new_key_is_issued_even_if_the_old_one_cannot_be_deleted(tmp_path):
+    db, phone, log, keys = setup(tmp_path)
+    db.update_phone(phone["id"], key_hash="hash-old")
+
+    class Refusing(FakeManager):
+        async def delete(self, key_hash):
+            raise KeyApiError("OpenRouter said 403: not your key")
+
+    keys._managers = lambda key: Refusing(log)
+    assert await keys.ensure(phone["id"], FakeConn(), "") is None
+    assert db.phone(phone["id"])["key_hash"] != "hash-old"
+
+
+async def test_a_new_key_that_cannot_be_paused_is_deleted_again(tmp_path):
+    db, phone, log, keys = setup(tmp_path)
+    db.update_phone(phone["id"], paused=1)
+
+    class NoPause(FakeManager):
+        async def set_disabled(self, key_hash, disabled):
+            raise KeyApiError("OpenRouter said 500: busy")
+
+    keys._managers = lambda key: NoPause(log)
+    assert "500" in await keys.ensure(phone["id"], FakeConn(), "")
+    assert ("delete", "hash1") in log and db.phone(phone["id"])["key_hash"] == ""

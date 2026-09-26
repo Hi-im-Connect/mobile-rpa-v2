@@ -151,3 +151,18 @@ async def test_resume_after_a_dashboard_restart(world, monkeypatch):
     assert fresh.phones.busy[phone["serial"]] == run["id"] and run["id"] in fresh._watchdogs
     fresh.close()
     orch.close()
+
+
+async def test_a_late_result_replaces_the_watchdog_failure(world, monkeypatch):
+    """A phone offline past the time limit still delivers its true outcome when it reconnects."""
+    db, orch, conn, phone = world
+    monkeypatch.setattr(Orchestrator, "_deadline_s", lambda self, settings: 0.05)
+    run = await started(db, orch, phone)
+    await asyncio.sleep(0.2)
+    assert db.run(run["id"])["status"] == "failed"
+    await orch.on_phone_message("dev-1", event(run, 1))
+    done = {"uuid": run["uuid"], "seq": 2, "status": "succeeded", "result": "Settings is open", "steps": 1}
+    await orch.on_phone_message("dev-1", {"method": "agent/finished", "params": done})
+    run = db.run(run["id"])
+    assert (run["status"], run["result"]) == ("succeeded", "Settings is open")
+    assert [e["text"] for e in db.events(run["id"]) if e["kind"] == "action"] == ["Tap Settings"]

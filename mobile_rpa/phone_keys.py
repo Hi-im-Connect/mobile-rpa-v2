@@ -66,13 +66,20 @@ class PhoneKeys:
                 return None
             try:
                 keys = self._manager()
-                if _own(phone["key_hash"]):
-                    await keys.delete(phone["key_hash"])  # the app lost it (reinstall): replace it
+                if _own(phone["key_hash"]):  # the app lost it (reinstall): replace it
+                    with contextlib.suppress(KeyApiError):  # a key that cannot be deleted must not block a new one
+                        await keys.delete(phone["key_hash"])
                 key, key_hash = await keys.create(f"{NAME_PREFIX}{phone_id}-{phone['name']}", self._cap())
-                if phone["paused"]:
-                    await keys.set_disabled(key_hash, True)
             except KeyApiError as exc:
                 return str(exc)
+            if phone["paused"]:
+                try:
+                    await keys.set_disabled(key_hash, True)
+                except KeyApiError as exc:  # a paused phone must not get a working key
+                    with contextlib.suppress(KeyApiError):
+                        await keys.delete(key_hash)
+                    self.db.update_phone(phone_id, key_hash="")
+                    return str(exc)
             self.db.update_phone(phone_id, key_hash=key_hash)
             try:
                 await conn.call("agent/credentials", {"key": key, "hash": key_hash, "base_url": OPENROUTER}, timeout=20)
