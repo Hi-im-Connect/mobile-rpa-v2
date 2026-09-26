@@ -199,8 +199,7 @@ function route() {
   document.querySelectorAll('[data-page]').forEach((a) => a.classList.toggle('on', a.dataset.page === page));
   if (page === 'history') loadHistory(true);
   if (page === 'phones' && booted) thumbTick(true);
-  if (page === 'tasks') { renderChips(); syncTileStreams(); }
-  if (page !== 'tasks') syncTileStreams();
+  if (page === 'tasks') renderChips();
 }
 window.addEventListener('hashchange', route);
 $('new-task-btn').onclick = () => { location.hash = '#tasks'; setTimeout(() => $('prompt').focus(), 60); };
@@ -292,7 +291,7 @@ function thumbTick(once) {
   if (!document.hidden && $('page-phones').classList.contains('on') && !document.body.classList.contains('locked')) {
     for (const p of S.phones) {
       const img = document.querySelector(`#ph-${p.id} img`);
-      if (!img || img.dataset.busy || (p.status !== 'online' && p.status !== 'busy')) continue;
+      if (!img || img.dataset.busy || p.status !== 'online') continue;
       img.dataset.busy = '1';
       const next = new Image();
       next.onload = () => { img.src = next.src; delete img.dataset.busy; img.parentNode.style.setProperty('--ar', `${next.naturalWidth} / ${next.naturalHeight}`); };
@@ -300,7 +299,7 @@ function thumbTick(once) {
       next.src = `api/phones/${p.id}/screen.jpg?t=${Date.now()}`;
     }
   }
-  if (!once) setTimeout(thumbTick, 2500);
+  if (!once) setTimeout(thumbTick, 10000);
 }
 
 $('add-phone-btn').onclick = addPhone;
@@ -498,7 +497,6 @@ $('run-btn').onclick = async () => {
 };
 
 /* ================= running board ================= */
-const tileViews = new Map(); // run id -> LiveView
 const isActive = (r) => r.status === 'queued' || r.status === 'running';
 function renderBoard() {
   const board = $('board');
@@ -511,7 +509,7 @@ function renderBoard() {
       g = el('div', 'run-group'); g.id = gid;
       g.innerHTML = `<div class="rg-head"><div class="p"></div><button class="ghost sm stop-all">Stop all</button><button class="ghost sm dismiss">Clear</button></div><div class="tiles"></div>`;
       g.querySelector('.stop-all').onclick = () => api(`api/tasks/${t.id}/stop`, {method: 'POST'}).catch(fail);
-      g.querySelector('.dismiss').onclick = () => { for (const r of S.tasks.get(t.id).runs) dropTile(r.id); S.tasks.delete(t.id); renderBoard(); };
+      g.querySelector('.dismiss').onclick = () => { S.tasks.delete(t.id); renderBoard(); };
       g.querySelector('.dismiss').textContent = 'Move to History';
       board.appendChild(g);
     }
@@ -528,7 +526,6 @@ function renderBoard() {
   const running = tasks.reduce((n, t) => n + t.runs.filter(isActive).length, 0);
   $('board-cnt').textContent = running ? running + ' running' : '';
   $('board-empty').hidden = tasks.length > 0;
-  syncTileStreams();
 }
 function updateTile(tiles, r) {
   let tile = $('tile-' + r.id);
@@ -551,23 +548,19 @@ function updateTile(tiles, r) {
   const res = tile.querySelector('.res');
   res.hidden = isActive(r) || !r.result; res.textContent = r.result || '';
   res.className = 'res' + (r.status === 'succeeded' ? ' good' : ' bad');
+  const scr = tile.querySelector('.screen');
+  const want = isActive(r) ? 'working' : 'shot';
+  if (scr.dataset.mode !== want) {
+    scr.dataset.mode = want;
+    scr.innerHTML = want === 'working'
+      ? '<div class="ov"><span class="spin"></span> Working on the phone</div>'
+      : `<img alt="Final screen" src="api/runs/${r.id}/shot.jpg" onerror="this.replaceWith(Object.assign(document.createElement('div'), {className: 'ov', textContent: 'No final screenshot'}))">`;
+  }
 }
 /* finished tasks leave the board when a new one starts (they stay in History) */
 function clearFinished() {
-  for (const [id, t] of S.tasks) if (!t.runs.some(isActive)) { t.runs.forEach((r) => dropTile(r.id)); S.tasks.delete(id); }
+  for (const [id, t] of S.tasks) if (!t.runs.some(isActive)) S.tasks.delete(id);
 }
-function dropTile(runId) { const v = tileViews.get(runId); if (v) { v.destroy(); tileViews.delete(runId); } }
-/* live video only for running tiles while the Tasks page is visible; finished tiles keep their last frame */
-function syncTileStreams() {
-  const visible = $('page-tasks').classList.contains('on') && !document.hidden;
-  for (const t of S.tasks.values()) for (const r of t.runs) {
-    const want = visible && isActive(r);
-    const tile = $('tile-' + r.id);
-    if (want && tile && !tileViews.has(r.id)) tileViews.set(r.id, new LiveView(tile.querySelector('.screen'), r.phone_id, {interactive: false}));
-    if (!want && tileViews.has(r.id)) dropTile(r.id); // the canvas keeps the last frame
-  }
-}
-document.addEventListener('visibilitychange', syncTileStreams);
 async function stopRun(runId) {
   try { await api(`api/runs/${runId}/stop`, {method: 'POST'}); toast('Stopping...'); } catch (e) { fail(e); }
 }
@@ -612,6 +605,7 @@ async function openTask(taskId) {
     const c = el('div', 'run-card');
     c.innerHTML = `<div class="t1"><b></b><span class="tag ${r.status}">${esc(STATUS_TXT[r.status] || r.status)}</span></div>
       <div class="instr"></div><div class="res ${r.status === 'succeeded' ? '' : 'bad'}"></div>
+      <img class="shot" alt="" loading="lazy" src="api/runs/${r.id}/shot.jpg" onerror="this.remove()" style="max-width:180px;border-radius:12px;margin:8px 0">
       <div class="field-note">${r.steps || 0} steps  /  ${esc(took(r.started_at, r.ended_at))}</div>
       <details><summary>Step log (${r.events.length})</summary><div class="log"></div></details>`;
     c.querySelector('.t1 b').textContent = r.phone_name;
@@ -636,77 +630,52 @@ function rerun(t) {
 
 /* ================= settings ================= */
 $('settings-btn').onclick = () => openSettings();
-const FORMAT_PRESETS = {
-  openai: {url: 'https://openrouter.ai/api/v1', planner: 'google/gemini-2.5-flash', executor: 'google/gemini-2.5-flash'},
-  anthropic: {url: 'https://api.anthropic.com', planner: 'claude-sonnet-5', executor: 'claude-haiku-4-5'},
-};
 function openSettings() {
   const s = S.settings;
-  let fmt = s.provider === 'anthropic' ? 'anthropic' : 'openai';
-  $('so-title').textContent = 'Settings'; $('so-sub').textContent = 'Which AI runs the phones, and the limits for every task.';
+  $('so-title').textContent = 'Settings'; $('so-sub').textContent = 'OpenRouter keys, models and the limits for every task.';
   $('so-body').innerHTML = `
-    <label>API format</label>
-    <div class="seg" id="s-format">
-      <button type="button" data-f="openai">OpenAI format</button>
-      <button type="button" data-f="anthropic">Claude format</button>
-    </div>
-    <p class="field-note" id="s-fnote"></p>
-    <label for="s-url">Base URL</label><input type="text" id="s-url" value="${esc(s.base_url)}">
-    <label for="s-key">API key</label>
-    <input type="password" id="s-key" autocomplete="off" placeholder="${s.api_key_set ? 'Saved (' + esc(s.api_key_hint) + '). Type to replace.' : 'Paste the key'}">
+    <label for="s-key">OpenRouter API key <small>(the dashboard's own: splitting tasks, credit)</small></label>
+    <input type="password" id="s-key" autocomplete="off" placeholder="${s.api_key_set ? 'Saved (' + esc(s.api_key_hint) + '). Type to replace.' : 'sk-or-v1-...'}">
+    <label for="s-mkey">OpenRouter management key <small>(gives each phone its own capped key)</small></label>
+    <input type="password" id="s-mkey" autocomplete="off" placeholder="${s.management_key_set ? 'Saved (' + esc(s.management_key_hint) + '). Type to replace.' : 'From openrouter.ai/settings/management-keys'}">
+    <label for="s-cap">Daily AI budget per phone (USD)</label><input type="number" id="s-cap" min="0.05" max="100" step="0.05" value="${esc(s.daily_cap_usd)}">
     <div class="field-row">
       <div><label for="s-planner">Planner model</label><input type="text" id="s-planner" value="${esc(s.planner_model)}"></div>
       <div><label for="s-exec">Executor model</label><input type="text" id="s-exec" value="${esc(s.executor_model)}"></div>
     </div>
-    <p class="field-note">The planner writes the steps, the executor does them. A fast executor makes everything feel quicker.</p>
+    <p class="field-note">Each phone runs its own agent and pays with its own key. The planner writes the goals, the executor does them.</p>
     <div class="field-row">
       <div><label for="s-steps">Default max steps</label><input type="number" id="s-steps" min="3" max="200" value="${esc(s.max_steps)}"></div>
       <div><label for="s-timeout">Time limit (minutes)</label><input type="number" id="s-timeout" min="1" max="240" value="${esc(s.timeout_minutes)}"></div>
     </div>
     <label class="switch" style="margin-top:14px"><input type="checkbox" id="s-vision" ${s.vision === '1' ? 'checked' : ''}><span class="sw"></span>
-      <span><b>Send screenshots to the models</b><small>Helps on apps with poor accessibility labels. Slower and costs more.</small></span></label>
+      <span><b>Send a small screenshot with every step</b><small>Helps on apps with poor accessibility labels. Costs a little more.</small></span></label>
     <p class="test-out" id="s-test-out"></p>`;
-  const NOTES = {
-    openai: 'OpenRouter, OpenAI, DeepSeek, Gemini, Ollama, vLLM, LM Studio: anything with /chat/completions.',
-    anthropic: 'Anthropic (Claude), DeepSeek (https://api.deepseek.com/anthropic) or any Claude-compatible endpoint.',
-  };
-  const pick = (f, fromClick) => {
-    if (fromClick && f !== fmt) { // switching formats: swap in that format's usual URL and models
-      const pre = FORMAT_PRESETS[f];
-      $('s-url').value = pre.url; $('s-planner').value = pre.planner; $('s-exec').value = pre.executor;
-      $('s-key').placeholder = 'Paste the key for this provider';
-    }
-    fmt = f;
-    document.querySelectorAll('#s-format button').forEach((b) => b.classList.toggle('on', b.dataset.f === f));
-    $('s-fnote').textContent = NOTES[f];
-    $('s-test-out').textContent = '';
-  };
-  document.querySelectorAll('#s-format button').forEach((b) => b.onclick = () => pick(b.dataset.f, true));
-  pick(fmt, false);
   const foot = $('so-foot'); foot.innerHTML = '';
   const test = el('button', 'secondary', 'Test connection');
   const save = el('button', 'primary', 'Save');
   test.onclick = async () => {
     const out = $('s-test-out'); out.className = 'test-out'; out.textContent = 'Testing...';
-    try { await saveSettings(fmt); const r = await api('api/settings/test', {method: 'POST'});
+    try { await saveSettings(); const r = await api('api/settings/test', {method: 'POST'});
       const low = r.credit != null && r.credit < 0.5;
       const bal = r.credit != null ? ` Credit left: $${r.credit.toFixed(2)}.` : '';
       out.className = 'test-out ' + (r.ok && !low ? 'ok' : 'bad');
       out.textContent = (r.ok ? 'Connected. The planner model answered.' : r.error) + bal + (low ? ' Too low for tasks: add credit.' : '');
     } catch (e) { out.className = 'test-out bad'; out.textContent = e.message; }
   };
-  save.onclick = async () => { try { await saveSettings(fmt); toast('Settings saved'); closeSo(); } catch (e) { fail(e); } };
+  save.onclick = async () => { try { await saveSettings(); toast('Settings saved'); closeSo(); } catch (e) { fail(e); } };
   foot.append(test, save);
   openSo();
 }
-async function saveSettings(fmt) {
+async function saveSettings() {
   const body = {
-    provider: fmt, base_url: $('s-url').value, planner_model: $('s-planner').value, executor_model: $('s-exec').value,
+    planner_model: $('s-planner').value, executor_model: $('s-exec').value, daily_cap_usd: $('s-cap').value,
     max_steps: $('s-steps').value, timeout_minutes: $('s-timeout').value, vision: $('s-vision').checked ? '1' : '0',
   };
   if ($('s-key').value.trim()) body.api_key = $('s-key').value.trim();
+  if ($('s-mkey').value.trim()) body.management_key = $('s-mkey').value.trim();
   S.settings = await api('api/settings', {method: 'PUT', body});
-  $('s-key').value = ''; $('opt-steps').value = S.settings.max_steps;
+  $('s-key').value = ''; $('s-mkey').value = ''; $('opt-steps').value = S.settings.max_steps;
   try { S.credit = await api('api/credit/refresh', {method: 'POST'}); renderCredit(); syncSend(); } catch (e) {}
 }
 
@@ -799,7 +768,7 @@ let booted = false;
 async function boot() {
   try { await refresh(); } catch (e) { return; }
   connectEvents(); route();
-  if (!booted) { booted = true; thumbTick(); if (!S.settings.ready) setTimeout(() => toast('Tip: add your model API key in Settings (gear icon).'), 900); }
+  if (!booted) { booted = true; thumbTick(); if (!S.settings.ready) setTimeout(() => toast('Tip: add the OpenRouter API key and management key in Settings (gear icon).'), 900); }
 }
 route();
 boot();

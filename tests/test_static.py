@@ -23,3 +23,13 @@ def test_v2_adds_phones_through_the_app_only():
     assert "v-prepare" not in html and "v-prepare" not in js
     assert "FastAutomate v2" in js
     assert ">v2<" in html
+
+
+def test_v2_screens():
+    js = (STATIC / "app.js").read_text()
+    assert "new LiveView(tile" not in js and "syncTileStreams" not in js  # no video on task tiles
+    assert "shot.jpg" in js  # final screenshot on tiles and in history
+    for field in ("management_key", "daily_cap_usd"):
+        assert field in js
+    assert "s-format" not in js and "FORMAT_PRESETS" not in js  # OpenRouter only
+    assert "10000" in js  # card thumbnails every 10 s
