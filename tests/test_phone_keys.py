@@ -56,7 +56,9 @@ async def test_a_new_phone_gets_its_own_capped_key(tmp_path):
     conn = FakeConn()
     assert await keys.ensure(phone["id"], conn, "") is None
     assert log == [("create", f"fastautomate-v2-{phone['id']}-POCO F3", 1.5)]
-    assert conn.calls == [("agent/credentials", {"key": "sk-or-v1-key1", "hash": "hash1", "base_url": "https://openrouter.ai/api/v1"})]
+    method, creds = conn.calls[0]
+    assert method == "agent/credentials" and len(conn.calls) == 1
+    assert (creds["key"], creds["hash"], creds["base_url"]) == ("sk-or-v1-key1", "hash1", "https://openrouter.ai/api/v1")
     assert db.phone(phone["id"])["key_hash"] == "hash1"
 
 

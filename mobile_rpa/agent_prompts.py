@@ -85,6 +85,11 @@ def run_payload(task: dict, run: dict, settings: dict[str, str]) -> dict:
             **_common(bool(task["reasoning"]), int(task["max_steps"]), settings)}
 
 
+def settings_payload(settings: dict[str, str]) -> dict:
+    """The current settings without a task: sent with a phone's key for the app's own runs."""
+    return _common(settings.get("reasoning", "1") != "0", int(settings.get("max_steps") or 30), settings)
+
+
 def defaults_json() -> str:
     """Settings + instructions the app uses for its own runs before the dashboard has sent any."""
     d = RUNTIME_DEFAULTS

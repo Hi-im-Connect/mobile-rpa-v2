@@ -261,3 +261,19 @@ def test_switching_to_another_provider_gives_phones_the_shared_key(client, monke
         assert creds["key"] == "gemini-key" and creds["hash"].startswith("shared-")
         assert client.put("/api/settings", json={"base_url": "ftp://x"}).status_code == 400
         phone.stop.set()
+
+
+
+def test_phones_always_have_the_current_settings(client, monkeypatch):
+    """The app's own Run button uses the dashboard's provider and models: sent on join and on change."""
+    login(client)
+    ready(client, monkeypatch)
+    with join(client) as ws:
+        phone = AgentPhone(ws)
+        first = wait_for(lambda: phone.sent("agent/settings"))[0]["params"]["defaults"]
+        assert first["executor_model"] == "google/gemini-2.5-flash" and first["prompts"]["tools"] and "uuid" not in first
+        client.put("/api/settings", json={"executor_model": "gemini-3.1-flash-lite-preview"})
+        changed = wait_for(lambda: [m for m in phone.sent("agent/settings")
+                                    if m["params"]["defaults"]["executor_model"] == "gemini-3.1-flash-lite-preview"])
+        assert changed
+        phone.stop.set()

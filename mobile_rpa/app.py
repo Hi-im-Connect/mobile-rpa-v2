@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import appconnect, auth
+from .agent_prompts import settings_payload
 from .db import Db
 from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub, app_serial, device_id_of
 from .events import Broker
@@ -32,6 +33,8 @@ STATIC = Path(__file__).with_name("static")
 LOW_CREDIT = 0.05  # USD: below this a task would die on its first model calls
 CREDIT_POLL_SECONDS = 120
 MAX_PHONES_PER_TASK = 50
+# settings the phones use for their own runs (agent/settings)
+PHONE_SETTINGS = {"base_url", "planner_model", "executor_model", "max_steps", "reasoning", "vision", "timeout_minutes"}
 
 
 class LoginBody(BaseModel):
@@ -110,11 +113,17 @@ def create_app(env: Env | None = None) -> FastAPI:
                 await refresh_credit()
             await asyncio.sleep(CREDIT_POLL_SECONDS)
 
+    async def push_settings(conn: DeviceConn) -> None:
+        """The phone's own Run button uses the dashboard's current provider, models and limits."""
+        with contextlib.suppress(DeviceError, TimeoutError):
+            await conn.call("agent/settings", {"defaults": settings_payload(db.settings())}, timeout=20)
+
     async def give_key(device_id: str, conn: DeviceConn, presented_hash: str) -> None:
         phone = db.phone_by_serial(app_serial(device_id))
         if phone:
             problem = await phone_keys.ensure(phone["id"], conn, presented_hash)
             phones.set_note(phone["serial"], problem or "")
+            await push_settings(conn)
 
     def on_phone_ready(device_id: str, conn: DeviceConn, presented_hash: str) -> None:
         spawn(give_key(device_id, conn, presented_hash))
@@ -351,6 +360,9 @@ def create_app(env: Env | None = None) -> FastAPI:
                 device_id = device_id_of(phone["serial"]) or ""
                 if devices.connected(device_id):
                     spawn(give_key(device_id, devices.get(device_id), ""))
+        if any(clean.get(k) != before.get(k) for k in clean.keys() & PHONE_SETTINGS):
+            for device_id in list(devices.conns):
+                spawn(push_settings(devices.get(device_id)))
         if "daily_cap_usd" in clean and clean["daily_cap_usd"] != before.get("daily_cap_usd"):
             spawn(phone_keys.apply_cap(float(clean["daily_cap_usd"])))
         values = masked_settings(db.settings())
