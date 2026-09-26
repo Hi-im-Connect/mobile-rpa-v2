@@ -17,12 +17,15 @@
      "What should I do?" box + Run, and a live card for the current run (step, Pause/Resume, Stop).
    - **Tasks**: this phone's runs (both origins); tap opens the existing task details screen.
    - **Settings**: status, "Show bubble" switch, **Advanced** = the old `MainActivity`, unchanged.
-3. **Bubble.** Drawn by the accessibility service (`TYPE_ACCESSIBILITY_OVERLAY`, no extra
-   permission). Draggable, snaps to the edge, drag onto the bottom ✕ hides it (Settings brings it
-   back). Idle tap opens a small dialog activity (text + Run); the dialog closes before the run
-   starts so the task works on the app the user was in. While running it shows a progress ring;
-   tap shows the step with Pause/Resume and Stop. It is hidden during the agent's screenshots and
-   gestures so the agent never sees or taps it.
+3. **Bubble (Messenger chat head).** Drawn by the accessibility service (`TYPE_ACCESSIBILITY_OVERLAY`,
+   no extra permission), moved by springs (androidx dynamicanimation, Rebound-style): pops in, flings
+   to the nearest edge, is pulled onto the bottom ✕ to hide (Settings brings it back). Tap = it springs
+   to the top and the chat opens under it (`ChatPanelActivity`: "+" for a new task, a pointer, your
+   tasks as green bubbles, one result bubble per finished task, the latest steps while running); tap
+   the bubble again, tap outside or Back = it folds back in. Sending closes the chat first, so the task
+   works on the app underneath. While a task runs the bubble turns red with a stop sign (tap = stop) and
+   a small grey pause/play button hangs under it. Both are hidden during the agent's screenshots and
+   gestures (`OverlayShy`), so the agent never sees or taps them.
 4. **Pause.** `agent/pause` / `agent/resume {uuid}` from the dashboard, the same from the bubble and
    Home. The loop pauses between steps; paused time does not count toward the time limit. The phone
    reports `paused` / `resumed` events. The dashboard stores the run as `paused` (still active),
