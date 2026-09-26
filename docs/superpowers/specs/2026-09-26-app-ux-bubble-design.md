@@ -19,14 +19,19 @@
    - **Settings**: status, "Show bubble" switch, **Advanced** = the old `MainActivity`, unchanged.
 3. **Bubble (Messenger chat head).** Drawn by the accessibility service (`TYPE_ACCESSIBILITY_OVERLAY`,
    no extra permission), moved by springs (androidx dynamicanimation, Rebound-style): pops in, flings
-   to the nearest edge, is pulled onto the bottom ✕ to hide (Settings brings it back). Tap = it springs
-   to the top and the chat opens under it (`ChatPanelActivity`: "+" for a new task, a pointer, your
-   tasks as green bubbles, one result bubble per finished task, the latest steps while running); tap
-   the bubble again, tap outside or Back = it folds back in. Sending closes the chat first, so the task
-   works on the app underneath. While a task runs the bubble turns red with a stop sign (tap = stop) and
-   a small grey pause/play button hangs under it. Both are hidden during the agent's screenshots and
-   gestures (`OverlayShy`), so the agent never sees or taps them.
-4. **Pause.** `agent/pause` / `agent/resume {uuid}` from the dashboard, the same from the bubble and
+   to the nearest edge, is pulled onto the bottom ✕ to hide (Settings brings it back). No shadow, no
+   dot, hidden on the lock screen. Tap = the chat (`FaChat`, also an overlay window, not an activity:
+   the app underneath stays, the status bar stays) grows out of the bubble, 80% of the screen tall, a
+   soft dim behind it; tap the bubble again, outside, or Back = it folds back in. A centered heads row:
+   the bubble, one head per chat (tap = switch, drag down onto the ✕ = delete, "+" = new chat), always
+   scrolled to the latest message. While a task runs the bubble is red with a stop sign (tap = stop) and
+   a small grey pause/play button hangs under it; they step aside only when the agent taps or swipes on
+   them (`OverlayShy`), and the executor is told to ignore the bubble in screenshots.
+4. **Talking layer (`ChatBrain`).** You chat with the assistant (the planner model, this phone's key);
+   each chat keeps its history (`ChatStore`, up to 5 chats), task results included. When something
+   should happen on the phone it calls `run_task` with one self-contained instruction, the chat folds
+   away and the agent (planner, then executor) runs it on the app underneath; the result lands in the chat.
+5. **Pause.** `agent/pause` / `agent/resume {uuid}` from the dashboard, the same from the bubble and
    Home. The loop pauses between steps; paused time does not count toward the time limit. The phone
    reports `paused` / `resumed` events. The dashboard stores the run as `paused` (still active),
    holds the silence watchdog while paused, restarts it on resume, and shows Pause/Resume buttons.
