@@ -24,7 +24,12 @@
    the app underneath stays, the status bar stays) grows out of the bubble, 80% of the screen tall, a
    soft dim behind it; tap the bubble again, outside, or Back = it folds back in. A centered heads row:
    the bubble, one head per chat (tap = switch, drag down onto the ✕ = delete, "+" = new chat), always
-   scrolled to the latest message. While a task runs the bubble is red with a stop sign (tap = stop) and
+   scrolled to the latest message. "+" opens Messenger's chat list (New chat, every chat with its last
+   message); the row shows the 4 most recent. With "Display over other apps" (a setup step) the chat is an
+   application overlay, under Android's gesture bar and back arrow; without it, an accessibility overlay
+   that leaves the bottom gesture area free. Back hides the keyboard first; drafts are kept per chat;
+   Home or switching apps closes the chat. The app has a Chats tab (opens a chat in the bubble), and every
+   chat line reaches the dashboard (`agent/chat`, acked like run reports) and shows in the phone viewer. While a task runs the bubble is red with a stop sign (tap = stop) and
    a small grey pause/play button hangs under it; they step aside only when the agent taps or swipes on
    them (`OverlayShy`), and the executor is told to ignore the bubble in screenshots.
 4. **Talking layer (`ChatBrain`).** You chat with the assistant (the planner model, this phone's key);
