@@ -506,7 +506,7 @@ $('run-btn').onclick = async () => {
 };
 
 /* ================= running board ================= */
-const isActive = (r) => r.status === 'queued' || r.status === 'running';
+const isActive = (r) => r.status === 'queued' || r.status === 'running' || r.status === 'paused';
 function renderBoard() {
   const board = $('board');
   const tasks = [...S.tasks.values()].sort((a, b) => b.id - a.id);
@@ -541,9 +541,10 @@ function updateTile(tiles, r) {
   if (!tile) {
     tile = el('div', 'tile'); tile.id = 'tile-' + r.id;
     tile.innerHTML = `<div class="screen"></div><div class="info"><div class="t1"><b></b><span class="tag"></span></div>
-      <div class="instr"></div><div class="now" hidden><span class="spin"></span><span class="txt"></span><span class="el"></span></div><div class="res" hidden></div><div class="log"></div><div class="foot"><span class="meta"></span><button class="ghost sm stop">Stop</button></div></div>`;
+      <div class="instr"></div><div class="now" hidden><span class="spin"></span><span class="txt"></span><span class="el"></span></div><div class="res" hidden></div><div class="log"></div><div class="foot"><span class="meta"></span><button class="ghost sm pause">Pause</button><button class="ghost sm stop">Stop</button></div></div>`;
     tile.querySelector('.screen').onclick = () => openViewer(r.phone_id);
     tile.querySelector('.stop').onclick = () => stopRun(r.id);
+    tile.querySelector('.pause').onclick = () => pauseRun(r.id, runById(r.id)?.status !== 'paused');
     tiles.appendChild(tile);
     renderLog(tile.querySelector('.log'), S.events.get(r.id) || [], true);
   }
@@ -553,6 +554,9 @@ function updateTile(tiles, r) {
   tile.querySelector('.instr').textContent = r.instruction; tile.querySelector('.instr').title = r.instruction;
   tile.querySelector('.meta').textContent = `${r.steps || 0} steps  ${took(r.started_at, r.ended_at)}`;
   tile.querySelector('.stop').hidden = !isActive(r);
+  const pause = tile.querySelector('.pause');
+  pause.hidden = r.status !== 'running' && r.status !== 'paused';
+  pause.textContent = r.status === 'paused' ? 'Resume' : 'Pause';
   renderNow(tile.querySelector('.now'), r);
   const res = tile.querySelector('.res');
   res.hidden = isActive(r) || !r.result; res.textContent = r.result || '';
@@ -573,13 +577,16 @@ function clearFinished() {
 async function stopRun(runId) {
   try { await api(`api/runs/${runId}/stop`, {method: 'POST'}); toast('Stopping...'); } catch (e) { fail(e); }
 }
+async function pauseRun(runId, paused) {
+  try { await api(`api/runs/${runId}/${paused ? 'pause' : 'resume'}`, {method: 'POST'}); toast(paused ? 'Pausing after this step...' : 'Resuming...'); } catch (e) { fail(e); }
+}
 setInterval(() => { // keep elapsed times ticking
   for (const t of S.tasks.values()) for (const r of t.runs) if (isActive(r)) { const tile = $('tile-' + r.id); if (tile) { tile.querySelector('.meta').textContent = `${r.steps || 0} steps  ${took(r.started_at, r.ended_at)}`; renderNow(tile.querySelector('.now'), r); } }
   if (viewer) { const p = phoneById(viewer.id); const run = p && p.run_id ? runById(p.run_id) : null; if (run) $('v-steps').textContent = `${run.steps || 0} steps  ${took(run.started_at, run.ended_at)}`; }
 }, 1000);
 
 /* ================= history ================= */
-const STATUS_TXT = {succeeded: 'Done', failed: 'Failed', stopped: 'Stopped', interrupted: 'Interrupted', running: 'Running', queued: 'Queued'};
+const STATUS_TXT = {succeeded: 'Done', failed: 'Failed', stopped: 'Stopped', interrupted: 'Interrupted', running: 'Running', paused: 'Paused', queued: 'Queued'};
 async function loadHistory(reset) {
   if (reset) { S.history = []; S.histDone = false; }
   try {

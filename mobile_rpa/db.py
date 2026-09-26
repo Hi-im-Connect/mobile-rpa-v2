@@ -77,7 +77,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS runs_uuid ON runs(uuid);
 CREATE UNIQUE INDEX IF NOT EXISTS run_events_seq ON run_events(run_id, seq);
 """
 
-ACTIVE_STATUSES = ("queued", "running")
+ACTIVE_STATUSES = ("queued", "running", "paused")
 
 
 def now() -> str:
@@ -204,7 +204,7 @@ class Db:
 
     def active_runs(self) -> list[dict]:
         return self._all(
-            "SELECT * FROM runs WHERE status IN ('queued', 'running') ORDER BY id"
+            "SELECT * FROM runs WHERE status IN ('queued', 'running', 'paused') ORDER BY id"
         )
 
     def update_run(self, run_id: int, **fields: Any) -> None:

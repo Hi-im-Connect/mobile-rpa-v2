@@ -113,7 +113,7 @@ main{flex:1;min-height:0;display:flex;flex-direction:column}
 .tag.busy,.tag.running,.tag.queued{background:var(--blue-soft);color:var(--blue)}
 .tag.preparing{background:var(--amber-soft);color:var(--amber)}
 .tag.offline,.tag.failed,.tag.unauthorized,.tag.interrupted{background:var(--red-soft);color:var(--red)}
-.tag.stopped{background:var(--amber-soft);color:var(--amber)}
+.tag.stopped,.tag.paused{background:var(--amber-soft);color:var(--amber)}
 .led{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:none}
 .led.busy{background:var(--blue)}
 .led.preparing{background:var(--amber)}
@@ -213,6 +213,7 @@ input[type=text],input[type=password],input[type=number],textarea,select{
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;display:grid;grid-template-columns:160px 1fr;gap:12px;min-height:300px}
 .tile.running{border-color:var(--blue)}
+.tile.paused{border-color:var(--amber)}
 .tile.succeeded{border-color:var(--accent)}
 .tile.failed{border-color:var(--red)}
 .tile .screen{cursor:zoom-in;border-radius:10px;align-self:start}

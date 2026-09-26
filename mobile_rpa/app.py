@@ -354,6 +354,22 @@ def create_app(env: Env | None = None) -> FastAPI:
             raise HTTPException(409, "That run is not running.")
         return {"ok": True}
 
+    @app.post("/api/runs/{run_id}/pause")
+    async def pause_run(run_id: int):
+        return await _pause(run_id, True)
+
+    @app.post("/api/runs/{run_id}/resume")
+    async def resume_run(run_id: int):
+        return await _pause(run_id, False)
+
+    async def _pause(run_id: int, paused: bool) -> dict:
+        try:
+            if not await orchestrator.pause_run(run_id, paused):
+                raise HTTPException(409, "That run is not running.")
+        except (DeviceError, TimeoutError) as exc:
+            raise HTTPException(409, f"The phone did not answer: {exc or 'timeout'}") from exc
+        return {"ok": True}
+
     @app.get("/api/runs/{run_id}/events")
     async def run_events(run_id: int):
         return db.events(run_id)

@@ -20,7 +20,7 @@ from .events import Broker
 
 log = logging.getLogger("mobile_rpa.orchestrator")
 
-ACTIVE = ("queued", "running")
+ACTIVE = ("queued", "running", "paused")
 FINAL = ("succeeded", "failed", "stopped")
 SILENCE_GRACE_S = 300  # after the time limit, how long a silent phone gets before its run is failed
 SILENT = "The phone stopped reporting (no result within the time limit)."
@@ -67,6 +67,15 @@ class Orchestrator:
             await conn.call("agent/stop", {"uuid": run["uuid"]}, timeout=10)
         except (DeviceError, TimeoutError):  # offline: close it here, ignore its late reports
             self._finish(run, "stopped", "Stopped by operator (the phone was not reachable).")
+        return True
+
+    async def pause_run(self, run_id: int, paused: bool) -> bool:
+        """Ask the phone to pause or resume; the run's status follows the phone's own report."""
+        run = self.db.run(run_id)
+        if not run or run["status"] not in ACTIVE:
+            return False
+        conn = self.devices.get(device_id_of(run["serial"]) or "")
+        await conn.call("agent/pause" if paused else "agent/resume", {"uuid": run["uuid"]}, timeout=10)
         return True
 
     # ---- phone -> dashboard ----------------------------------------------------------------
@@ -118,6 +127,8 @@ class Orchestrator:
             return  # already stored
         if params.get("steps") is not None:
             self.db.update_run(run["id"], steps=int(params["steps"]))
+        if event["kind"] in ("paused", "resumed") and run["status"] in ACTIVE:
+            self._paused(run, event["kind"] == "paused")
         self.broker.publish("run_event", {**event, "task_id": run["task_id"], "steps": params.get("steps")})
 
     def _phone_finished(self, run: dict, params: dict) -> None:
@@ -130,13 +141,24 @@ class Orchestrator:
         extra = {"steps": int(params["steps"])} if params.get("steps") is not None else {}
         self._finish(run, status, str(params.get("result") or "")[:4000], **extra)
 
+    def _paused(self, run: dict, paused: bool) -> None:
+        """A paused run is not given up on; the silence watchdog starts over when it resumes."""
+        if paused:
+            dog = self._watchdogs.pop(run["id"], None)
+            if dog:
+                dog.cancel()
+        else:
+            self._watch(run["id"], self._deadline_s(self.db.settings()))
+        self._update(run, status="paused" if paused else "running")
+
     # ---- lifecycle ----------------------------------------------------------------------
     def resume(self) -> None:
         """After a dashboard restart: runs keep going on the phones, so watch them again."""
         settings = self.db.settings()
         for run in self.db.active_runs():
             self.phones.busy[run["serial"]] = run["id"]
-            self._watch(run["id"], self._deadline_s(settings))
+            if run["status"] != "paused":  # a paused run waits for its resume
+                self._watch(run["id"], self._deadline_s(settings))
 
     def close(self) -> None:
         for dog in self._watchdogs.values():

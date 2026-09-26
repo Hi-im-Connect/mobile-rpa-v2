@@ -166,3 +166,41 @@ async def test_a_late_result_replaces_the_watchdog_failure(world, monkeypatch):
     run = db.run(run["id"])
     assert (run["status"], run["result"]) == ("succeeded", "Settings is open")
     assert [e["text"] for e in db.events(run["id"]) if e["kind"] == "action"] == ["Tap Settings"]
+
+
+async def test_pause_and_resume_go_to_the_phone_and_hold_the_watchdog(world, monkeypatch):
+    db, orch, conn, phone = world
+    monkeypatch.setattr(Orchestrator, "_deadline_s", lambda self, settings: 0.1)
+    run = await started(db, orch, phone)
+    assert await orch.pause_run(run["id"], True)
+    assert conn.calls[-1] == ("agent/pause", {"uuid": run["uuid"]})
+    await orch.on_phone_message("dev-1", event(run, 1, kind="paused", text="Paused"))
+    assert db.run(run["id"])["status"] == "paused"
+    await asyncio.sleep(0.25)  # longer than the time limit: a paused run is not given up on
+    assert db.run(run["id"])["status"] == "paused" and orch.phones.busy[phone["serial"]] == run["id"]
+    assert await orch.pause_run(run["id"], False)
+    assert conn.calls[-1] == ("agent/resume", {"uuid": run["uuid"]})
+    await orch.on_phone_message("dev-1", event(run, 2, kind="resumed", text="Resumed"))
+    assert db.run(run["id"])["status"] == "running"
+    await asyncio.sleep(0.25)  # the watchdog runs again after resuming
+    assert db.run(run["id"])["status"] == "failed"
+
+
+async def test_a_paused_run_can_be_stopped_and_finished(world):
+    db, orch, conn, phone = world
+    run = await started(db, orch, phone)
+    await orch.on_phone_message("dev-1", event(run, 1, kind="paused", text="Paused"))
+    assert await orch.stop_run(run["id"])
+    done = {"uuid": run["uuid"], "seq": 2, "status": "stopped", "result": "Stopped", "steps": 1}
+    await orch.on_phone_message("dev-1", {"method": "agent/finished", "params": done})
+    assert db.run(run["id"])["status"] == "stopped"
+
+
+async def test_after_a_dashboard_restart_a_paused_run_stays_paused(world):
+    db, orch, conn, phone = world
+    run = await started(db, orch, phone)
+    await orch.on_phone_message("dev-1", event(run, 1, kind="paused", text="Paused"))
+    orch.close()
+    orch.phones.busy.clear()
+    orch.resume()
+    assert orch.phones.busy[phone["serial"]] == run["id"] and run["id"] not in orch._watchdogs
