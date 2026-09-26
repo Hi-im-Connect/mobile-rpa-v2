@@ -20,14 +20,16 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from . import auth
+from .apk_stamp import StampError, stamp
 from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub
 
 log = logging.getLogger("mobile_rpa.appconnect")
 
 APK = Path(__file__).with_name("fa-portal-v2.apk")
+APK_TYPE = "application/vnd.android.package-archive"
 JOIN_PATH = "/v1/providers/personal/join"
 INVITE_HOURS = 24
 CALLBACK_SCHEMES = {"fastautomate2"}
@@ -55,10 +57,19 @@ def register(app: FastAPI, *, env, db, phones, devices: DeviceHub, on_phone_read
 
     # ---- public pages ------------------------------------------------------------------------
     @app.get("/app/FastAutomate-v2.apk")
-    async def download_app():
+    async def download_app(t: str = ""):
+        """With a fresh invite, the app carries it inside, so it connects on first launch by itself."""
         if not APK.exists():
             raise HTTPException(404, "The app is not bundled on this server")
-        return FileResponse(APK, media_type="application/vnd.android.package-archive", filename="FastAutomate-v2.apk")
+        row = db.app_token(t) if t else None
+        if row and not row["device_id"] and not _expired(row):
+            try:
+                data = stamp(await asyncio.to_thread(APK.read_bytes), json.dumps({"token": t}).encode())
+                return Response(data, media_type=APK_TYPE,
+                                headers={"Content-Disposition": 'attachment; filename="FastAutomate-v2.apk"'})
+            except StampError as exc:
+                log.warning("could not stamp the app with the invite: %s", exc)
+        return FileResponse(APK, media_type=APK_TYPE, filename="FastAutomate-v2.apk")
 
     @app.get("/connect")
     async def invite_page(t: str = ""):
@@ -70,11 +81,10 @@ def register(app: FastAPI, *, env, db, phones, devices: DeviceHub, on_phone_read
         body = f"""
         <ol class="steps">
           <li><b>Install the app</b><span>Download it, open the file and allow installing.</span>
-            <a class="btn ghost" href="{public}/app/FastAutomate-v2.apk">Download FastAutomate v2</a></li>
-          <li><b>Connect this phone</b><span>Opens the app and links it to the dashboard.</span>
-            <a class="btn" href="{html.escape(intent)}" data-fallback="{html.escape(link)}">Connect</a></li>
-          <li><b>Turn on the FastAutomate v2 service</b><span>In the app, tap <i>Accessibility Service</i> and switch it on. If the first FastAutomate app is also on this phone, switch its service off.
-            If Android says the setting is restricted: Settings &gt; Apps &gt; FastAutomate v2 &gt; &#8942; &gt; Allow restricted settings, then try again.</span></li>
+            <a class="btn ghost" href="{public}/app/FastAutomate-v2.apk?t={quote(t)}">Download FastAutomate v2</a></li>
+          <li><b>Open it</b><span>It connects to the dashboard by itself and shows the two or three switches it needs.</span></li>
+          <li><b>Not connected?</b><span>Tap Connect to link the app by hand.</span>
+            <a class="btn ghost" href="{html.escape(intent)}" data-fallback="{html.escape(link)}">Connect</a></li>
         </ol>""" if valid else "<p class='bad'>This link expired or was already used. Ask for a new one on the dashboard.</p>"
         return HTMLResponse(_page("Connect your phone", body, public))
 
@@ -105,7 +115,7 @@ def register(app: FastAPI, *, env, db, phones, devices: DeviceHub, on_phone_read
     @app.post("/api/app/invite")
     async def invite():
         token = new_token(None, INVITE_HOURS)
-        return {"url": f"{public}/connect?t={quote(token)}", "download": f"{public}/app/FastAutomate-v2.apk"}
+        return {"url": f"{public}/connect?t={quote(token)}", "download": f"{public}/app/FastAutomate-v2.apk?t={quote(token)}"}
 
     # ---- the app's live connection -------------------------------------------------------------
     @app.websocket(JOIN_PATH)

@@ -236,3 +236,21 @@ def test_drags_and_scrolls_past_the_edge_stay_on_screen(client):  # noqa: F811
     for _, p in [c for c in calls if c[0] == "swipe"]:
         assert 0 <= p["startX"] < 1080 and 0 <= p["endX"] < 1080, p
         assert 0 <= p["startY"] < 2400 and 0 <= p["endY"] < 2400, p
+
+
+def test_the_invite_download_carries_the_invite(client, tmp_path, monkeypatch):  # noqa: F811
+    from mobile_rpa.apk_stamp import read_stamp
+
+    from .test_apk_stamp import fake_apk
+
+    apk = tmp_path / "fa.apk"
+    apk.write_bytes(fake_apk())
+    monkeypatch.setattr(appconnect, "APK", apk)
+    login(client)
+    token = invite_token(client)
+    page = client.get(f"/connect?t={token}").text
+    assert f"app/FastAutomate-v2.apk?t={token}" in page
+    got = client.get(f"/app/FastAutomate-v2.apk?t={token}")
+    assert got.status_code == 200 and json.loads(read_stamp(got.content)) == {"token": token}
+    assert read_stamp(client.get("/app/FastAutomate-v2.apk?t=nope").content) is None  # unknown invite: plain app
+    assert read_stamp(client.get("/app/FastAutomate-v2.apk").content) is None
