@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import json
 
-from .settings import RUNTIME_DEFAULTS
+from .settings import OPENROUTER, RUNTIME_DEFAULTS
 
 PROMPTS_VERSION = "2026-09-25.1"
-OPENROUTER = "https://openrouter.ai/api/v1"
 
 PLANNER_SYSTEM = """You plan work for an AI agent that operates an Android phone by tapping, typing and scrolling.
 Given the task and the current screen, write the shortest list of concrete goals (at most 6) that completes the task.

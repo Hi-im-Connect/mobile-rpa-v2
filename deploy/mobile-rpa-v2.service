@@ -10,7 +10,6 @@ Environment=MRPA_DATA_DIR=/var/lib/mobile-rpa-v2
 Environment=MRPA_HOST=0.0.0.0
 Environment=MRPA_PORT=8091
 Environment=MRPA_PUBLIC_URL=https://digimate.fastautomate.com/mobile2
-Environment=MRPA_ADB=/usr/local/bin/adb
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=MRPA_PASSWORD=connect
 Environment=HOME=/var/lib/mobile-rpa-v2

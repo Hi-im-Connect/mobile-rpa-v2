@@ -4,8 +4,6 @@
   password" button): public pages that hand the app a token.
 - ``GET /app/FastAutomate.apk``: the app download.
 - ``WS /v1/providers/personal/join``: the app's live connection (token in the Authorization header).
-- ``/v1/relay/{device}/...``: Portal-HTTP contract for the agent, relayed over that connection
-  (local only).
 - ``/v1/models``, ``/v1/tasks...``: the app's own prompt screen runs tasks on its phone.
 """
 
@@ -13,8 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import hashlib
-import hmac
 import html
 import json
 import logging
@@ -25,7 +21,7 @@ from pathlib import Path
 from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse
 
 from . import auth
 from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub, app_serial, device_id_of
@@ -43,10 +39,8 @@ TASK_STATUS = {  # our run status -> what the app's task screen understands
 }
 
 
-def register(app: FastAPI, *, env, db, phones, runner, broker, devices: DeviceHub, start_task) -> str:
-    """Add the routes; returns the relay key the runner hands to workers."""
-    # derived from the install's secret: stable across restarts, never leaves the server
-    relay_key = hmac.new(env.session_secret, b"relay", hashlib.sha256).hexdigest()
+def register(app: FastAPI, *, env, db, phones, orchestrator, devices: DeviceHub, start_task, on_phone_ready) -> None:
+    """Add the routes the FastAutomate v2 app talks to."""
     public = env.public_url.rstrip("/")
     ws_url = public.replace("https://", "wss://").replace("http://", "ws://") + JOIN_PATH
 
@@ -135,30 +129,9 @@ def register(app: FastAPI, *, env, db, phones, runner, broker, devices: DeviceHu
         await ws.accept()
         name = (ws.headers.get("x-device-name") or "Phone").strip()[:60]
         android = (ws.headers.get("x-android-version") or "").strip()[:12]
+        presented_hash = (ws.headers.get("x-agent-key-hash") or "").strip()[:128]
         await phones.add_app_phone(device_id, name, android)
-        await devices.serve(ws, device_id, name)
-
-    # ---- relay for the agent (Portal HTTP contract over the app connection) ---------------------
-    @app.api_route("/v1/relay/{device_id}/{path:path}", methods=["GET", "POST"])
-    async def relay(device_id: str, path: str, request: Request):
-        if request.client is None or request.client.host not in ("127.0.0.1", "::1"):
-            raise HTTPException(403)
-        if request.headers.get("authorization", "") != f"Bearer {relay_key}":
-            raise HTTPException(401)
-        conn = _conn(devices, device_id)
-        method = {"state_full": "state", "a11y_tree_full": "a11y_tree"}.get(path, path)
-        try:
-            if method == "screenshot":
-                return Response(await conn.screenshot(960, 70), media_type="image/jpeg")
-            params = dict(request.query_params) if request.method == "GET" else (await request.json() or {})
-            if method == "state":
-                params = {"filter": str(params.get("filter", "")).lower() == "true"}
-            result = await conn.call(method, params, timeout=60)
-        except DeviceError as exc:
-            return JSONResponse({"status": "error", "error": str(exc)}, 502)
-        except TimeoutError:
-            return JSONResponse({"status": "error", "error": "the phone did not answer in time"}, 504)
-        return {"status": "success", "result": result}
+        await devices.serve(ws, device_id, name, on_ready=lambda conn: on_phone_ready(device_id, conn, presented_hash))
 
     # ---- the app's own task screen: tasks for this phone only ----------------------------------
     def device_phone(request: Request) -> dict:
@@ -229,10 +202,9 @@ def register(app: FastAPI, *, env, db, phones, runner, broker, devices: DeviceHu
         phone, task = own_task(request, task_id)
         for run in task["runs"]:
             if run["phone_id"] == phone["id"]:
-                await runner.stop_run(run["id"])
+                await orchestrator.stop_run(run["id"])
         return {"status": "cancelling"}
 
-    return relay_key
 
 
 # ---- live view for app phones --------------------------------------------------------------------

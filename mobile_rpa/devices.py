@@ -116,6 +116,7 @@ class DeviceHub:
     def __init__(self) -> None:
         self.conns: dict[str, DeviceConn] = {}
         self.on_change = None  # callback when a phone connects/disconnects
+        self.on_message = None  # async (device_id, message) for agent/* reports
 
     def connected(self, device_id: str | None) -> bool:
         return bool(device_id) and device_id in self.conns
@@ -126,7 +127,7 @@ class DeviceHub:
             raise DeviceError("The phone is not connected (open the FastAutomate app on it).")
         return conn
 
-    async def serve(self, ws: WebSocket, device_id: str, name: str) -> None:
+    async def serve(self, ws: WebSocket, device_id: str, name: str, on_ready=None) -> None:
         """Run one phone's connection until it drops."""
         old = self.conns.get(device_id)
         if old is not None:  # the app reconnected: the new socket wins
@@ -136,17 +137,25 @@ class DeviceHub:
         conn = DeviceConn(ws, device_id, name)
         self.conns[device_id] = conn
         self._changed()
+        if on_ready:
+            on_ready(conn)
         try:
             while True:
                 incoming = await ws.receive()
                 if incoming.get("type") == "websocket.disconnect":
                     break
+                message = None
                 with contextlib.suppress(ValueError, TypeError):
                     message = json.loads(incoming.get("text") or "")
-                    if isinstance(message, dict) and "method" not in message:
-                        conn.feed(message)
-                    elif isinstance(message, dict):  # phone-side events, e.g. stream/error
-                        log.info("phone %s event: %s", device_id, json.dumps(message)[:300])
+                if not isinstance(message, dict):
+                    continue
+                if "method" not in message:
+                    conn.feed(message)
+                elif self.on_message and str(message["method"]).startswith("agent/"):
+                    try:
+                        await self.on_message(device_id, message)
+                    except Exception:
+                        log.exception("phone %s: report %s failed", device_id, message.get("method"))
         except Exception as exc:  # WebSocketDisconnect and friends
             log.info("phone %s disconnected: %s", device_id, type(exc).__name__)
         finally:

@@ -85,15 +85,18 @@ def test_unknown_token_is_refused(client):  # noqa: F811
     assert not accepted
 
 
-def test_app_prompt_runs_a_task_on_its_own_phone(client):  # noqa: F811
+def test_app_prompt_runs_a_task_on_its_own_phone(client, monkeypatch):  # noqa: F811
+    from .test_app import AgentPhone, ready
+
     login(client)
-    client.put("/api/settings", json={"api_key": "sk-test-key-0000"})
+    ready(client, monkeypatch)
     token = invite_token(client)
     headers = {"Authorization": f"Bearer {token}", "X-Device-ID": "dev-9", "X-Device-Name": "POCO F3"}
     stop = threading.Event()
     with client.websocket_connect(JOIN, headers=headers) as ws:
-        threading.Thread(target=fake_phone, args=(ws, stop), daemon=True).start()
+        AgentPhone(ws).stop = stop  # a v2 app: finishes each task and ignores acks
         auth = {"Authorization": f"Bearer {token}"}
+        wait_for(lambda: client.app.state.db.phone(app_phone(client)["id"])["key_hash"])
         assert client.get("/v1/models", headers=auth).json()["models"]
         created = client.post("/v1/tasks", headers=auth, json={"deviceId": "dev-9", "task": "open settings"})
         assert created.status_code == 200, created.text

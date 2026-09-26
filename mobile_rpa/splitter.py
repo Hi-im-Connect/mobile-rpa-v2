@@ -8,7 +8,7 @@ import re
 
 import httpx
 
-from .settings import llm
+from .settings import OPENROUTER, llm
 
 SYSTEM = """You assign work to Android phones that are each driven by an AI agent.
 The operator wrote ONE task for N phones. Write exactly N instructions, one per phone, in order.
@@ -49,19 +49,11 @@ async def chat(settings: dict[str, str], system: str, user: str, max_tokens: int
     """One reply from the planner model of the active provider (OpenAI-style or Claude)."""
     conn = llm(settings)
     if not conn["key"]:
-        raise SplitError("Add an API key in Settings first.")
-    if conn["provider"] == "anthropic":
-        url = conn["base_url"] + "/v1/messages"
-        headers = {"x-api-key": conn["key"], "anthropic-version": "2023-06-01"}
-        body = {"model": settings["planner_model"], "max_tokens": max_tokens,
-                "messages": [{"role": "user", "content": user}]}
-        if system:
-            body["system"] = system
-    else:
-        url = conn["base_url"].rstrip("/") + "/chat/completions"
-        headers = {"Authorization": f"Bearer {conn['key']}"}
-        messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": user}]
-        body = {"model": settings["planner_model"], "max_tokens": max_tokens, "messages": messages}
+        raise SplitError("Add the OpenRouter API key in Settings first.")
+    url = conn["base_url"] + "/chat/completions"
+    headers = {"Authorization": f"Bearer {conn['key']}"}
+    messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": user}]
+    body = {"model": settings["planner_model"], "max_tokens": max_tokens, "messages": messages}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json=body, headers=headers)
@@ -70,10 +62,7 @@ async def chat(settings: dict[str, str], system: str, user: str, max_tokens: int
     if resp.status_code != 200:
         raise SplitError(f"Model provider said {resp.status_code}: {_error_text(resp)}")
     try:
-        data = resp.json()
-        if conn["provider"] == "anthropic":
-            return "".join(b.get("text", "") for b in data["content"] if b.get("type") == "text").strip()
-        return (data["choices"][0]["message"]["content"] or "").strip()
+        return (resp.json()["choices"][0]["message"]["content"] or "").strip()
     except (KeyError, IndexError, ValueError, TypeError) as exc:
         raise SplitError("Unexpected reply from the model provider.") from exc
 
@@ -94,17 +83,14 @@ async def test_connection(settings: dict[str, str]) -> str:
 
 
 async def credit_left(settings: dict[str, str]) -> float | None:
-    """Remaining OpenRouter balance in USD, or None for other providers / on any error."""
-    base = settings.get("base_url", "")
-    if llm(settings)["provider"] != "openai" or "openrouter.ai" not in base or not settings.get("api_key"):
+    """Remaining OpenRouter account balance in USD (either key can read it), or None on any error."""
+    key = settings.get("api_key") or settings.get("management_key")
+    if not key:
         return None
     for attempt in range(3):  # a blip (DNS, TLS) must not hide the balance
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(
-                    base.rstrip("/") + "/credits",
-                    headers={"Authorization": f"Bearer {settings['api_key']}"},
-                )
+                resp = await client.get(OPENROUTER + "/credits", headers={"Authorization": f"Bearer {key}"})
             data = resp.json()["data"]
             return round(float(data["total_credits"]) - float(data["total_usage"]), 4)
         except httpx.HTTPError:

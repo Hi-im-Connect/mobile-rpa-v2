@@ -28,21 +28,3 @@ async def test_single_phone_needs_no_model_call():
 async def test_multi_phone_needs_a_key():
     with pytest.raises(SplitError, match="API key"):
         await split("x", ["a", "b"], {"api_key": ""})
-
-
-async def test_claude_chat_uses_messages_api(monkeypatch):
-    import httpx
-
-    from mobile_rpa import splitter
-
-    seen = {}
-
-    async def fake_post(self, url, json=None, headers=None):
-        seen.update(url=url, json=json, headers=headers)
-        return httpx.Response(200, json={"content": [{"type": "text", "text": '{"instructions": ["a", "b"]}'}]})
-
-    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
-    settings = {"provider": "anthropic", "api_key": "sk-ant-api03-k", "base_url": "", "planner_model": "claude-sonnet-5"}
-    assert await splitter.split("x", ["p1", "p2"], settings) == ["a", "b"]
-    assert seen["url"] == "https://api.anthropic.com/v1/messages"
-    assert seen["headers"]["x-api-key"] == "sk-ant-api03-k" and "system" in seen["json"]
