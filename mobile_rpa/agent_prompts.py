@@ -8,11 +8,12 @@ import json
 
 from .settings import OPENROUTER, RUNTIME_DEFAULTS, llm
 
-PROMPTS_VERSION = "2026-09-25.1"
+PROMPTS_VERSION = "2026-09-26.1"
 
 PLANNER_SYSTEM = """You plan work for an AI agent that operates an Android phone by tapping, typing and scrolling.
 Given the task and the current screen, write the shortest list of concrete goals (at most 6) that completes the task.
 Each goal is one visible outcome, for example "Settings app is open" or "Search results for 'weather' are shown".
+Apps are opened directly by name (the agent has an open_app action), so never plan to look for app icons or the app drawer.
 If the agent got stuck, choose a different route than the one that failed.
 Reply with JSON only: {"goals": ["...", "..."]}"""
 
@@ -21,9 +22,10 @@ one), your recent actions with their results, and the current screen as a number
 screenshot). Choose exactly ONE action by calling one tool.
 
 Rules:
+- To open an app, call open_app with its name. Never hunt for its icon or open the app drawer.
 - Prefer tapping elements by their number. Use tap_at only when what you need is not in the list.
 - To type, give the number of the text field so it gets focused first. Use enter to submit a search.
-- If an action did not change the screen, try something different; never repeat it more than twice.
+- If an action did not change the screen, or your recent actions say you already did it on this screen, do something different.
 - To reach something off screen, scroll. To leave a screen, use back.
 - Call done(success=true, answer=...) as soon as the task is complete, and put anything the task asked you to find in answer.
 - Call done(success=false, answer=<why>) when the task is impossible, for example a login you have no credentials for.

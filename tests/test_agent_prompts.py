@@ -35,3 +35,9 @@ def test_defaults_for_the_app_have_no_task():
 def test_payload_uses_the_configured_provider():
     gemini = "https://generativelanguage.googleapis.com/v1beta/openai"
     assert run_payload(TASK, RUN, {**SETTINGS, "base_url": gemini + "/"})["base_url"] == gemini
+
+
+def test_apps_are_opened_by_name_not_hunted_for():
+    from mobile_rpa.agent_prompts import EXECUTOR_SYSTEM, PLANNER_SYSTEM
+
+    assert "open_app" in EXECUTOR_SYSTEM and "open_app" in PLANNER_SYSTEM
