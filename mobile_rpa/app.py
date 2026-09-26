@@ -237,6 +237,12 @@ def create_app(env: Env | None = None) -> FastAPI:
         await phones.remove(phone_id)
         return {"ok": True}
 
+    @app.get("/api/phones/{phone_id}/chats")
+    async def phone_chats(phone_id: int):
+        """The app's chats on this phone (the bubble's conversations), newest first."""
+        phone_or_404(phone_id)
+        return {"chats": db.chats(phone_id)}
+
     @app.get("/api/phones/{phone_id}/screen.jpg")
     async def screen(phone_id: int):
         phone = phone_or_404(phone_id)

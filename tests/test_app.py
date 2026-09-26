@@ -317,3 +317,15 @@ def test_budget_failure_shows_on_the_card(client, monkeypatch):
 
 def test_old_app_task_api_is_gone(client):
     assert client.get("/v1/models").status_code in (404, 405)
+
+
+def test_a_phones_chats_are_listed_newest_first(client):
+    login(client)
+    db = client.app.state.db
+    phone = db.add_phone("app:dev-1", "POCO", "POCO F3", "16")
+    db.add_chat_line(phone["id"], "old", 1, "user", "hi", "", "2026-09-26T09:00:00Z")
+    db.add_chat_line(phone["id"], "new", 1, "user", "open youtube", "", "2026-09-26T10:00:00Z")
+    db.add_chat_line(phone["id"], "new", 2, "task", "Open YouTube", "u-1", "2026-09-26T10:00:01Z")
+    chats = client.get(f"/api/phones/{phone['id']}/chats").json()["chats"]
+    assert [(c["chat_id"], c["title"], len(c["lines"])) for c in chats] == [("new", "open youtube", 2), ("old", "hi", 1)]
+    assert client.get("/api/phones/999/chats").status_code == 404

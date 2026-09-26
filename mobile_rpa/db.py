@@ -55,6 +55,17 @@ CREATE TABLE IF NOT EXISTS run_events (
   seq INTEGER
 );
 CREATE INDEX IF NOT EXISTS run_events_run ON run_events(run_id);
+CREATE TABLE IF NOT EXISTS chat_lines (
+  id INTEGER PRIMARY KEY,
+  phone_id INTEGER NOT NULL,
+  chat_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  role TEXT NOT NULL,
+  text TEXT NOT NULL,
+  run_uuid TEXT NOT NULL DEFAULT '',
+  ts TEXT NOT NULL,
+  UNIQUE (phone_id, chat_id, seq)
+);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS app_tokens (
   token TEXT PRIMARY KEY,
@@ -161,6 +172,7 @@ class Db:
 
     def delete_phone(self, phone_id: int) -> None:
         self._run("DELETE FROM phones WHERE id = ?", phone_id)
+        self._run("DELETE FROM chat_lines WHERE phone_id = ?", phone_id)
 
     # ---- tasks and runs ------------------------------------------------------------------
     def create_task(
@@ -232,6 +244,30 @@ class Db:
         return self._all("SELECT * FROM run_events WHERE run_id = ? ORDER BY id", run_id)
 
     # ---- app connect tokens (FastAutomate app) --------------------------------------------
+    # ---- the app's chats (the phone reports every line; the dashboard shows them) ---------------
+    def add_chat_line(self, phone_id: int, chat_id: str, seq: int, role: str, text: str, run_uuid: str, ts: str) -> None:
+        self._run(
+            "INSERT OR IGNORE INTO chat_lines(phone_id, chat_id, seq, role, text, run_uuid, ts) VALUES (?,?,?,?,?,?,?)",
+            phone_id, chat_id, seq, role, text, run_uuid, ts,
+        )
+
+    def delete_chat(self, phone_id: int, chat_id: str) -> None:
+        self._run("DELETE FROM chat_lines WHERE phone_id=? AND chat_id=?", phone_id, chat_id)
+
+    def chats(self, phone_id: int) -> list[dict]:
+        """This phone's chats, most recently used first, each with its lines in order."""
+        rows = self._all("SELECT * FROM chat_lines WHERE phone_id=? ORDER BY chat_id, seq", phone_id)
+        chats: dict[str, dict] = {}
+        for r in rows:
+            chat = chats.setdefault(r["chat_id"], {"chat_id": r["chat_id"], "title": "", "updated": "", "lines": []})
+            chat["lines"].append({k: r[k] for k in ("seq", "role", "text", "run_uuid", "ts")})
+            chat["updated"] = max(chat["updated"], r["ts"])
+            if not chat["title"] and r["role"] == "user":
+                chat["title"] = r["text"][:80]
+        for chat in chats.values():
+            chat["title"] = chat["title"] or "New chat"
+        return sorted(chats.values(), key=lambda c: c["updated"], reverse=True)
+
     def create_app_token(self, token: str, device_id: str | None = None, expires_at: str | None = None) -> None:
         self._run(
             "INSERT INTO app_tokens(token, device_id, created_at, expires_at) VALUES(?, ?, ?, ?)",

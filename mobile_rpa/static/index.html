@@ -166,6 +166,11 @@ try { var t = localStorage.getItem('mrpa-theme'); if (t) document.documentElemen
           <div class="z-h"><b>Step log</b></div>
           <div class="log" id="v-log"></div>
         </section>
+        <section class="v-card" id="v-chatcard" hidden>
+          <div class="z-h"><b>Chats on this phone</b><span class="cnt" id="v-chatcount"></span></div>
+          <div class="chat-list" id="v-chats"></div>
+          <div class="convo" id="v-convo" hidden></div>
+        </section>
         <form class="v-type" id="v-type">
           <input type="text" id="v-text" placeholder="Type on the phone..." autocomplete="off">
           <button type="submit" class="primary sm">Send</button>

@@ -204,3 +204,25 @@ async def test_after_a_dashboard_restart_a_paused_run_stays_paused(world):
     orch.phones.busy.clear()
     orch.resume()
     assert orch.phones.busy[phone["serial"]] == run["id"] and run["id"] not in orch._watchdogs
+
+
+async def test_chat_lines_from_the_phone_are_kept_and_acked(world):
+    db, orch, conn, phone = world
+    line = {"uuid": "chat-1", "seq": 1, "role": "user", "text": "open youtube", "ts": "2026-09-26T10:00:00Z"}
+    await orch.on_phone_message("dev-1", {"method": "agent/chat", "params": line})
+    await orch.on_phone_message("dev-1", {"method": "agent/chat", "params": line})  # resent after a reconnect
+    await orch.on_phone_message("dev-1", {"method": "agent/chat", "params": {
+        "uuid": "chat-1", "seq": 2, "role": "task", "text": "Open YouTube", "run": "u-9", "ts": "2026-09-26T10:00:05Z"}})
+    chats = db.chats(phone["id"])
+    assert [(c["chat_id"], c["title"]) for c in chats] == [("chat-1", "open youtube")]
+    assert [(l["seq"], l["role"], l["text"], l["run_uuid"]) for l in chats[0]["lines"]] == [
+        (1, "user", "open youtube", ""), (2, "task", "Open YouTube", "u-9")]
+    assert conn.notes[-1] == ("agent/ack", {"uuid": "chat-1", "seq": 2})
+
+
+async def test_a_chat_deleted_on_the_phone_goes_from_the_dashboard(world):
+    db, orch, conn, phone = world
+    await orch.on_phone_message("dev-1", {"method": "agent/chat", "params": {"uuid": "c", "seq": 1, "role": "user", "text": "hi"}})
+    await orch.on_phone_message("dev-1", {"method": "agent/chat", "params": {"uuid": "c", "seq": 2, "role": "deleted", "text": ""}})
+    assert db.chats(phone["id"]) == []
+    assert conn.notes[-1] == ("agent/ack", {"uuid": "c", "seq": 2})

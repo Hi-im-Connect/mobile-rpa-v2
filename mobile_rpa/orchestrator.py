@@ -81,10 +81,13 @@ class Orchestrator:
     # ---- phone -> dashboard ----------------------------------------------------------------
     async def on_phone_message(self, device_id: str, message: dict) -> None:
         method, params = message.get("method"), message.get("params") or {}
-        if method not in ("agent/started", "agent/event", "agent/finished"):
+        if method not in ("agent/started", "agent/event", "agent/finished", "agent/chat"):
             return
         run_uuid, seq = str(params.get("uuid") or ""), params.get("seq")
         try:
+            if method == "agent/chat":
+                self._phone_chat(device_id, params)
+                return
             if method == "agent/started":
                 self._phone_started(device_id, params)
                 return
@@ -98,6 +101,20 @@ class Orchestrator:
         finally:  # always ack, so a report the dashboard cannot use never clogs the phone's outbox
             with contextlib.suppress(Exception):
                 await self.devices.get(device_id).notify("agent/ack", {"uuid": run_uuid, "seq": seq})
+
+    def _phone_chat(self, device_id: str, params: dict) -> None:
+        """A line of one of the app's chats (uuid = the chat), or role "deleted" when the chat was deleted."""
+        phone = self.db.phone_by_serial(app_serial(device_id))
+        chat_id = str(params.get("uuid") or "")[:64]
+        if not phone or not chat_id or not isinstance(params.get("seq"), int):
+            return
+        if params.get("role") == "deleted":
+            self.db.delete_chat(phone["id"], chat_id)
+        else:
+            self.db.add_chat_line(phone["id"], chat_id, params["seq"], str(params.get("role") or "")[:20],
+                                  str(params.get("text") or "")[:8000], str(params.get("run") or "")[:64],
+                                  str(params.get("ts") or now()))
+        self.broker.publish("chat", {"phone_id": phone["id"], "chat_id": chat_id})
 
     def _phone_started(self, device_id: str, params: dict) -> None:
         run_uuid = str(params.get("uuid") or "")

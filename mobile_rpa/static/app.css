@@ -389,3 +389,15 @@ body.locked #login-view{display:grid}
   .tile{grid-template-columns:120px 1fr}
   .opts{flex-direction:column}
 }
+
+/* the app's chats in the phone viewer */
+.chat-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto}
+.chat-row{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:1px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer}
+.chat-row b{font-size:12.5px;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-row span{font-size:11.5px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-row.sel{border-color:var(--accent);background:var(--accent-soft)}
+.convo{display:flex;flex-direction:column;gap:5px;max-height:34vh;overflow:auto;padding-top:4px}
+.convo .msg{max-width:82%;padding:7px 11px;border-radius:14px;font-size:12.5px;line-height:1.4;white-space:pre-wrap;overflow-wrap:anywhere}
+.convo .me{align-self:flex-end;background:var(--accent);color:#fff}
+.convo .bot{align-self:flex-start;background:var(--ground);color:var(--ink)}
+.convo .task{align-self:flex-start;background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px}

@@ -347,6 +347,36 @@ function openViewer(phoneId) {
   $('viewer').hidden = false;
   viewer = {id: phoneId, live: new LiveView($('v-screen'), phoneId, {interactive: true})};
   renderViewer();
+  loadChats();
+}
+/* the app's chats (the bubble's conversations), synced from the phone */
+async function loadChats() {
+  if (!viewer) return;
+  const id = viewer.id;
+  let chats = [];
+  try { chats = (await api(`api/phones/${id}/chats`)).chats; } catch { return; }
+  if (!viewer || viewer.id !== id) return;
+  viewer.chats = chats;
+  $('v-chatcard').hidden = !chats.length;
+  $('v-chatcount').textContent = chats.length ? String(chats.length) : '';
+  $('v-chats').replaceChildren(...chats.map((c) => {
+    const b = el('button', 'chat-row' + (viewer.chat === c.chat_id ? ' sel' : '')); b.type = 'button';
+    const last = c.lines[c.lines.length - 1];
+    b.innerHTML = `<b></b><span></span>`;
+    b.firstChild.textContent = c.title; b.lastChild.textContent = last ? last.text.split('\n')[0] : '';
+    b.onclick = () => { viewer.chat = viewer.chat === c.chat_id ? null : c.chat_id; loadChats(); };
+    return b;
+  }));
+  const open = chats.find((c) => c.chat_id === viewer.chat);
+  $('v-convo').hidden = !open;
+  if (open) {
+    $('v-convo').replaceChildren(...open.lines.map((l) => {
+      const m = el('div', 'msg ' + (l.role === 'user' ? 'me' : l.role === 'task' ? 'task' : 'bot'));
+      m.textContent = l.role === 'task' ? 'Task: ' + l.text : l.text;
+      return m;
+    }));
+    $('v-convo').scrollTop = $('v-convo').scrollHeight;
+  }
 }
 function closeViewer() {
   if (!viewer) return;
@@ -744,6 +774,7 @@ function connectEvents() {
     if (!isActive(r) && r.ended_at) { if (r.status === 'succeeded') S.stats.succeeded++; else S.stats.failed++; renderKpis(); if ($('page-history').classList.contains('on')) loadHistory(true); }
     renderViewer();
   });
+  source.addEventListener('chat', (m) => { const c = JSON.parse(m.data); if (viewer && viewer.id === c.phone_id) loadChats(); });
   source.addEventListener('credit', (m) => { S.credit = JSON.parse(m.data); renderCredit(); syncSend(); });
   source.addEventListener('run_event', (m) => {
     const ev = JSON.parse(m.data);
