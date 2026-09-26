@@ -85,37 +85,6 @@ def test_unknown_token_is_refused(client):  # noqa: F811
     assert not accepted
 
 
-def test_app_prompt_runs_a_task_on_its_own_phone(client, monkeypatch):  # noqa: F811
-    from .test_app import AgentPhone, ready
-
-    login(client)
-    ready(client, monkeypatch)
-    token = invite_token(client)
-    headers = {"Authorization": f"Bearer {token}", "X-Device-ID": "dev-9", "X-Device-Name": "POCO F3"}
-    stop = threading.Event()
-    with client.websocket_connect(JOIN, headers=headers) as ws:
-        AgentPhone(ws).stop = stop  # a v2 app: finishes each task and ignores acks
-        auth = {"Authorization": f"Bearer {token}"}
-        wait_for(lambda: client.app.state.db.phone(app_phone(client)["id"])["key_hash"])
-        assert client.get("/v1/models", headers=auth).json()["models"]
-        created = client.post("/v1/tasks", headers=auth, json={"deviceId": "dev-9", "task": "open settings"})
-        assert created.status_code == 200, created.text
-        task_id = created.json()["id"]
-        task = client.get(f"/v1/tasks/{task_id}", headers=auth).json()["task"]
-        assert task["task"] == "open settings" and task["deviceId"] == "dev-9"
-        assert client.get("/v1/tasks", headers=auth).json()["pagination"]["total"] == 1
-        # another phone's token cannot see it
-        other = invite_token(client)
-        assert client.get(f"/v1/tasks/{task_id}", headers={"Authorization": f"Bearer {other}"}).status_code == 404
-        # the app's Reasoning and Max steps choices apply, like the dashboard's task form
-        # (once the first run is over: a busy phone refuses a second task)
-        assert wait_for(lambda: client.get(f"/v1/tasks/{task_id}", headers=auth).json()["task"]["status"] in ("completed", "failed", "cancelled"))
-        quick = client.post("/v1/tasks", headers=auth, json={"task": "go home", "reasoning": False, "maxSteps": 12})
-        shown = client.get(f"/v1/tasks/{quick.json()['id']}", headers=auth).json()["task"]
-        assert shown["reasoning"] is False and shown["maxSteps"] == 12
-        stop.set()
-
-
 def test_removing_the_phone_revokes_its_token(client):  # noqa: F811
     login(client)
     token = invite_token(client)
@@ -126,12 +95,13 @@ def test_removing_the_phone_revokes_its_token(client):  # noqa: F811
         phone = next(p for p in client.get("/api/state").json()["phones"] if p["link"] == "app")
         stop.set()
     assert client.delete(f"/api/phones/{phone['id']}").status_code == 200
-    assert client.get("/v1/models", headers={"Authorization": f"Bearer {token}"}).status_code == 401
-
-
-def test_trajectory_uses_mobilerun_event_names():
-    event = appconnect._trajectory_event({"kind": "action", "text": "Tap OK", "ts": "t"})
-    assert event == {"event": "ExecutorActionEvent", "data": {"description": "Tap OK"}, "timestamp": "t"}
+    try:  # the app cannot come back with its old token
+        with client.websocket_connect(JOIN, headers=headers) as ws:
+            ws.receive_text()
+        rejoined = True
+    except Exception:
+        rejoined = False
+    assert not rejoined
 
 
 def app_phone(client) -> dict:  # noqa: F811

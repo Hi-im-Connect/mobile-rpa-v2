@@ -4,7 +4,6 @@
   password" button): public pages that hand the app a token.
 - ``GET /app/FastAutomate.apk``: the app download.
 - ``WS /v1/providers/personal/join``: the app's live connection (token in the Authorization header).
-- ``/v1/models``, ``/v1/tasks...``: the app's own prompt screen runs tasks on its phone.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse
 
 from . import auth
-from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub, app_serial, device_id_of
+from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub
 
 log = logging.getLogger("mobile_rpa.appconnect")
 
@@ -33,13 +32,9 @@ JOIN_PATH = "/v1/providers/personal/join"
 INVITE_HOURS = 24
 CALLBACK_SCHEMES = {"fastautomate2"}
 APP_PACKAGE = "com.fastautomate.agent"
-TASK_STATUS = {  # our run status -> what the app's task screen understands
-    "queued": "created", "running": "running", "succeeded": "completed",
-    "failed": "failed", "interrupted": "failed", "stopped": "cancelled",
-}
 
 
-def register(app: FastAPI, *, env, db, phones, orchestrator, devices: DeviceHub, start_task, on_phone_ready) -> None:
+def register(app: FastAPI, *, env, db, phones, devices: DeviceHub, on_phone_ready) -> None:
     """Add the routes the FastAutomate v2 app talks to."""
     public = env.public_url.rstrip("/")
     ws_url = public.replace("https://", "wss://").replace("http://", "ws://") + JOIN_PATH
@@ -132,79 +127,6 @@ def register(app: FastAPI, *, env, db, phones, orchestrator, devices: DeviceHub,
         presented_hash = (ws.headers.get("x-agent-key-hash") or "").strip()[:128]
         await phones.add_app_phone(device_id, name, android)
         await devices.serve(ws, device_id, name, on_ready=lambda conn: on_phone_ready(device_id, conn, presented_hash))
-
-    # ---- the app's own task screen: tasks for this phone only ----------------------------------
-    def device_phone(request: Request) -> dict:
-        _, row = token_device(request)
-        phone = db.phone_by_serial(app_serial(row["device_id"] or ""))
-        if not phone:
-            raise HTTPException(404, "This phone is not on the dashboard")
-        return phone
-
-    def own_task(request: Request, task_id: str) -> tuple[dict, dict]:
-        phone = device_phone(request)
-        task = db.task(int(task_id)) if task_id.isdigit() else None
-        if not task or not any(r["phone_id"] == phone["id"] for r in task["runs"]):
-            raise HTTPException(404, "No such task")
-        return phone, task
-
-    @app.get("/v1/models")
-    async def models(request: Request):
-        device_phone(request)
-        return {"models": ["fastautomate/agent"]}
-
-    @app.post("/v1/tasks")
-    async def create_task(request: Request):
-        phone = device_phone(request)
-        body = await request.json()
-        prompt = str(body.get("task", "")).strip()
-        if not prompt:
-            raise HTTPException(400, "Write what the phone should do")
-        reasoning = body.get("reasoning") if isinstance(body.get("reasoning"), bool) else None
-        steps = body.get("maxSteps")
-        max_steps = steps if isinstance(steps, int) and 3 <= steps <= 200 else None
-        task = await start_task(prompt, [{"phone_id": phone["id"], "instruction": prompt}], reasoning, max_steps)
-        return {"id": str(task["id"]), "status": "created"}
-
-    @app.get("/v1/tasks")
-    async def list_tasks(request: Request, page: int = 1, pageSize: int = 20):
-        phone = device_phone(request)
-        size = min(max(pageSize, 1), 100)
-        tasks, total = db.tasks_for_phone(phone["id"], size, (max(page, 1) - 1) * size)
-        pages = max(1, (total + size - 1) // size)
-        return {"items": [_app_task(t, phone) for t in tasks],
-                "pagination": {"page": page, "pageSize": size, "total": total, "pages": pages,
-                               "hasNext": page < pages, "hasPrev": page > 1}}
-
-    @app.get("/v1/tasks/{task_id}")
-    async def get_task(task_id: str, request: Request):
-        phone, task = own_task(request, task_id)
-        return {"task": _app_task(task, phone)}
-
-    @app.get("/v1/tasks/{task_id}/status")
-    async def task_status(task_id: str, request: Request):
-        phone, task = own_task(request, task_id)
-        return {"status": _app_task(task, phone)["status"]}
-
-    @app.get("/v1/tasks/{task_id}/trajectory")
-    async def trajectory(task_id: str, request: Request):
-        phone, task = own_task(request, task_id)
-        run = next(r for r in task["runs"] if r["phone_id"] == phone["id"])
-        return {"trajectory": [_trajectory_event(e) for e in db.events(run["id"]) if e["kind"] not in ("phase", "status")]}
-
-    @app.get("/v1/tasks/{task_id}/screenshots")
-    async def screenshots(task_id: str, request: Request):
-        own_task(request, task_id)
-        return {"urls": []}
-
-    @app.post("/v1/tasks/{task_id}/cancel")
-    async def cancel(task_id: str, request: Request):
-        phone, task = own_task(request, task_id)
-        for run in task["runs"]:
-            if run["phone_id"] == phone["id"]:
-                await orchestrator.stop_run(run["id"])
-        return {"status": "cancelling"}
-
 
 
 # ---- live view for app phones --------------------------------------------------------------------
@@ -339,37 +261,6 @@ def _conn(devices: DeviceHub, device_id: str) -> DeviceConn:
 def _expired(row: dict) -> bool:
     expires = row.get("expires_at")
     return bool(expires) and datetime.fromisoformat(expires) < datetime.now(UTC)
-
-
-def _app_task(task: dict, phone: dict) -> dict:
-    run = next((r for r in task["runs"] if r["phone_id"] == phone["id"]), task["runs"][0])
-    status = TASK_STATUS.get(run["status"], "failed")
-    return {
-        "id": str(task["id"]), "status": status, "task": task["prompt"], "createdAt": task["created_at"],
-        "finishedAt": run.get("ended_at"), "steps": run.get("steps") or 0,
-        "succeeded": run["status"] == "succeeded" if status in ("completed", "failed", "cancelled") else None,
-        "output": run.get("result") or None, "llmModel": "fastautomate/agent",
-        "reasoning": bool(task["reasoning"]), "maxSteps": task["max_steps"],
-        "deviceId": device_id_of(phone["serial"]),
-    }
-
-
-def _trajectory_event(event: dict) -> dict:
-    """Our step log in mobilerun's event vocabulary, which the app knows how to show."""
-    text = event["text"]
-    mapping = {
-        "plan": ("ManagerPlanDetailsEvent", {"plan": text}),
-        "step": ("ManagerPlanDetailsEvent", {"subgoal": text}),
-        "answer": ("ManagerPlanDetailsEvent", {"answer": text}),
-        "action": ("ExecutorActionEvent", {"description": text}),
-        "ok": ("ExecutorActionResultEvent", {"success": True, "summary": text}),
-        "error": ("ExecutorActionResultEvent", {"success": False, "summary": text}),
-        "think": ("FastAgentResponseEvent", {"thought": text}),
-        "done": ("ResultEvent", {"success": True, "reason": text}),
-        "fail": ("ResultEvent", {"success": False, "reason": text}),
-    }
-    name, data = mapping.get(event["kind"], ("InfoEvent", {"message": text}))
-    return {"event": name, "data": data, "timestamp": event["ts"]}
 
 
 # ---- small FA-styled pages for the phone's browser -----------------------------------------------

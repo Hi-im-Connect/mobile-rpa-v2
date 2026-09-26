@@ -38,3 +38,10 @@ def test_v2_screens():
 def test_v2_settings_have_a_provider_url():
     js = (STATIC / "app.js").read_text()
     assert "s-url" in js and "base_url" in js
+
+
+def test_v2_pause_and_spend_ui():
+    js = (STATIC / "app.js").read_text()
+    html = (STATIC / "index.html").read_text()
+    assert 'id="v-pause"' in html and "/pause" in js and "/resume" in js
+    assert "today" in js  # spend chip

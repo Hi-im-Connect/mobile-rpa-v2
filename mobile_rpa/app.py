@@ -22,6 +22,7 @@ from .agent_prompts import settings_payload
 from .db import Db
 from .devices import GLOBAL_ACTIONS, DeviceConn, DeviceError, DeviceHub, app_serial, device_id_of
 from .events import Broker
+from .openrouter_keys import KeyApiError
 from .orchestrator import Orchestrator
 from .phone_keys import PhoneKeys, key_mode
 from .phones import PhoneRegistry
@@ -101,9 +102,29 @@ def create_app(env: Env | None = None) -> FastAPI:
             broker.publish("credit", {"credit": value, "low": _low(value)})
         return value
 
+    async def refresh_spend(phone: dict | None = None) -> None:
+        for p in [phone] if phone else db.phones():
+            value = await phone_keys.spent_today(p)
+            if value is not None:
+                phones.spend[p["serial"]] = value
+        phones.publish()
+
+    async def spend_loop() -> None:
+        while True:
+            with contextlib.suppress(Exception):
+                await refresh_spend()
+            await asyncio.sleep(600)
+
     async def after_run(run: dict) -> None:
         with contextlib.suppress(Exception):
             await refresh_credit()
+        phone = db.phone(run["phone_id"])
+        if phone and run["status"] == "failed" and "daily AI budget" in (run.get("result") or ""):
+            phones.set_note(phone["serial"], run["result"])  # the spec: the card shows a spent budget
+        elif phone and run["status"] == "succeeded":
+            phones.set_note(phone["serial"], "")
+        with contextlib.suppress(Exception):
+            await refresh_spend(phone)
 
     orchestrator.on_finish = after_run
 
@@ -132,8 +153,10 @@ def create_app(env: Env | None = None) -> FastAPI:
     async def lifespan(_: FastAPI):
         orchestrator.resume()
         poller = asyncio.create_task(credit_loop())
+        spender = asyncio.create_task(spend_loop())
         yield
         poller.cancel()
+        spender.cancel()
         orchestrator.close()
 
     app = FastAPI(title="Mobile RPA v2", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -234,6 +257,22 @@ def create_app(env: Env | None = None) -> FastAPI:
             raise HTTPException(503, str(exc) or "The phone did not answer") from exc
         return {"ok": True}
 
+    @app.post("/api/phones/{phone_id}/pause")
+    async def pause_phone(phone_id: int):
+        return await set_paused(phone_or_404(phone_id), True)
+
+    @app.post("/api/phones/{phone_id}/resume")
+    async def resume_phone(phone_id: int):
+        return await set_paused(phone_or_404(phone_id), False)
+
+    async def set_paused(phone: dict, paused: bool) -> dict:
+        try:
+            await phone_keys.pause(phone, paused)
+        except KeyApiError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        phones.publish()
+        return {"ok": True}
+
     # ---- tasks ---------------------------------------------------------------------------
     def pick_phones(ids: list[int]) -> list[dict]:
         picked, seen = [], set()
@@ -273,6 +312,8 @@ def create_app(env: Env | None = None) -> FastAPI:
                                          "first step. Add credit at openrouter.ai/settings/credits, then press Run again.")
         picked = {p["id"]: p for p in pick_phones([sp["phone_id"] for sp in specs])}
         for phone in picked.values():
+            if phone["paused"]:
+                raise HTTPException(409, f"{phone['name']} is paused. Resume it to run tasks.")
             if not phone["key_hash"]:
                 raise HTTPException(409, f"{phone['name']} has no AI key yet. Add the OpenRouter management key in "
                                          "Settings, then keep the phone connected for a moment.")
@@ -419,8 +460,7 @@ def create_app(env: Env | None = None) -> FastAPI:
     async def app_balance():
         raise HTTPException(404, "Credits are managed on the dashboard")
 
-    appconnect.register(app, env=env, db=db, phones=phones, orchestrator=orchestrator, devices=devices,
-                        start_task=launch, on_phone_ready=on_phone_ready)
+    appconnect.register(app, env=env, db=db, phones=phones, devices=devices, on_phone_ready=on_phone_ready)
     app.mount("/", StaticFiles(directory=STATIC), name="static")
     return app
 

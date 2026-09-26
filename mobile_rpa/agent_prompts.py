@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 
-from .settings import OPENROUTER, RUNTIME_DEFAULTS, llm
+from .settings import RUNTIME_DEFAULTS, llm
 
 PROMPTS_VERSION = "2026-09-26.1"
 

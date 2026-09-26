@@ -18,6 +18,7 @@ class PhoneRegistry:
         self.db, self.broker, self.devices = db, broker, devices
         self.busy: dict[str, int] = {}  # serial -> run id
         self.notes: dict[str, str] = {}  # serial -> problem shown on the card
+        self.spend: dict[str, float] = {}  # serial -> today's USD (per-phone OpenRouter keys)
         self._thumbs: dict[str, tuple[float, bytes]] = {}
         self._thumb_locks: dict[str, asyncio.Lock] = {}
 
@@ -29,7 +30,7 @@ class PhoneRegistry:
     def view(self, phone: dict) -> dict:
         serial = phone["serial"]
         return {**phone, "link": "app", "status": self.status(serial), "run_id": self.busy.get(serial),
-                "note": self.notes.get(serial, "")}
+                "note": self.notes.get(serial, ""), "paused": bool(phone.get("paused")), "spend": self.spend.get(serial)}
 
     def all(self) -> list[dict]:
         return [self.view(p) for p in self.db.phones()]
@@ -65,6 +66,7 @@ class PhoneRegistry:
         self.db.delete_phone(phone_id)
         self._thumbs.pop(serial, None)
         self.notes.pop(serial, None)
+        self.spend.pop(serial, None)
         device_id = device_id_of(serial) or ""
         self.db.revoke_device_tokens(device_id)  # the app cannot silently come back
         if self.devices.connected(device_id):

@@ -273,6 +273,10 @@ function renderPhones() {
     card.querySelector('.m1').textContent = p.link === 'virtual' ? 'Virtual phone' : (p.model || 'Android phone');
     const andr = card.querySelector('.c-android');
     andr.hidden = !p.android; andr.innerHTML = ICON.android + 'Android ' + esc(p.android);
+    let spend = card.querySelector('.c-spend');
+    if (!spend) { spend = el('span', 'chip c-spend'); card.querySelector('.chips2').appendChild(spend); }
+    spend.hidden = p.spend == null; spend.textContent = p.spend == null ? '' : `$${p.spend.toFixed(2)} today`;
+    if (p.paused) { tag.textContent = 'AI paused'; tag.className = 'tag offline'; }
     const link = LINKS[p.link] || LINKS.wifi;
     const lc = card.querySelector('.c-link'); lc.className = 'chip c-link ' + (p.link || 'wifi'); lc.innerHTML = link.icon + link.label;
     const run = p.run_id ? runById(p.run_id) : null;
@@ -355,6 +359,7 @@ function renderViewer() {
   if (!viewer) return;
   const p = phoneById(viewer.id); if (!p) { closeViewer(); return; }
   $('v-name').textContent = p.name;
+  $('v-pause').textContent = p.paused ? 'Resume AI' : 'Pause AI';
   $('v-sub').textContent = [where(p), p.model, p.android && 'Android ' + p.android].filter(Boolean).join('  /  ');
   $('v-led').className = 'led ' + p.status;
   $('v-tag').className = 'tag ' + p.status; $('v-tag').textContent = STATUS_LABEL[p.status] || p.status;
@@ -377,6 +382,10 @@ $('v-rename').onclick = () => {
   const p = viewer && phoneById(viewer.id); if (!p) return;
   openModal({title: 'Rename phone', body: `<label for="m-rn">Name</label><input type="text" id="m-rn" maxlength="60" value="${esc(p.name)}">`, go: 'Save', focus: 'm-rn',
     submit: async () => { await api(`api/phones/${p.id}`, {method: 'PATCH', body: {name: $('m-rn').value}}); }});
+};
+$('v-pause').onclick = async () => {
+  const p = viewer && phoneById(viewer.id); if (!p) return;
+  try { await api(p.paused ? `api/phones/${p.id}/resume` : `api/phones/${p.id}/pause`, {method: 'POST'}); toast(p.name + (p.paused ? ': AI resumed' : ': AI paused')); } catch (e) { fail(e); }
 };
 $('v-remove').onclick = () => {
   const p = viewer && phoneById(viewer.id); if (!p) return;

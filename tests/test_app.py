@@ -277,3 +277,43 @@ def test_phones_always_have_the_current_settings(client, monkeypatch):
                                     if m["params"]["defaults"]["executor_model"] == "gemini-3.1-flash-lite-preview"])
         assert changed
         phone.stop.set()
+
+
+def test_pause_and_resume_a_phone(client, monkeypatch):
+    login(client)
+    fake = ready(client, monkeypatch)
+    with join(client) as ws:
+        phone = AgentPhone(ws)
+        p = keyed_phone(client)
+        assert client.post(f"/api/phones/{p['id']}/pause").json() == {"ok": True}
+        assert the_phone(client)["paused"] is True
+        r = client.post("/api/tasks", json={"prompt": "x", "runs": [{"phone_id": p["id"], "instruction": "x"}]})
+        assert r.status_code == 409 and "paused" in r.json()["detail"]
+        client.post(f"/api/phones/{p['id']}/resume")
+        assert the_phone(client)["paused"] is False
+        assert ("disabled", "hash-1", True) in fake.log and ("disabled", "hash-1", False) in fake.log
+        phone.stop.set()
+
+
+def test_spend_shows_on_the_card_after_a_run(client, monkeypatch):
+    login(client)
+    ready(client, monkeypatch)
+    with join(client) as ws:
+        phone = AgentPhone(ws)
+        run_task(client, keyed_phone(client))
+        assert wait_for(lambda: the_phone(client)["spend"] == 0.12)
+        phone.stop.set()
+
+
+def test_budget_failure_shows_on_the_card(client, monkeypatch):
+    login(client)
+    ready(client, monkeypatch)
+    with join(client) as ws:
+        phone = AgentPhone(ws)
+        run_task(client, keyed_phone(client), "budget test")
+        assert "daily AI budget" in wait_for(lambda: the_phone(client)["note"])
+        phone.stop.set()
+
+
+def test_old_app_task_api_is_gone(client):
+    assert client.get("/v1/models").status_code in (404, 405)

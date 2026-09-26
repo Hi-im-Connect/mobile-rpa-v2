@@ -1,6 +1,7 @@
 import json
 
-from mobile_rpa.agent_prompts import OPENROUTER, TOOL_NAMES, TOOLS, defaults_json, run_payload
+from mobile_rpa.agent_prompts import TOOL_NAMES, TOOLS, defaults_json, run_payload
+from mobile_rpa.settings import OPENROUTER
 
 TASK = {"reasoning": 1, "max_steps": 12}
 RUN = {"uuid": "u1", "instruction": "open settings"}

@@ -12,8 +12,7 @@ import contextlib
 import hashlib
 from collections.abc import Callable
 
-from .agent_prompts import OPENROUTER
-from .settings import is_openrouter, llm
+from .settings import OPENROUTER, is_openrouter, llm
 from .db import Db
 from .devices import DeviceError
 from .openrouter_keys import KeyApiError, KeyManager
